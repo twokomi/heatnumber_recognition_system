@@ -1,0 +1,80 @@
+{
+  "entries": [
+    {
+      "customer": "Vestas",
+      "project": "Alle Cat",
+      "customerProject": "VC",
+      "skirtNumber": 1,
+      "sectionType": "Bot.",
+      "sectionCode": "B",
+      "drawingBase": "29266561",
+      "drawingFull": "29266561-B01",
+      "heatNumbers": [
+        "B5G610-C14-A02",
+        "B5H630-C12-A02",
+        "B5G610-C14-A01",
+        "B5H630-C12-A01",
+        "B5G609-C03-A01",
+        "B5G611-C06-A02",
+        "B5G609-C05-A01",
+        "B5G610-C11-A01",
+        "B5G610-C12-A02",
+        "B5G610-C11-A02",
+        "B5G609-C03-A02",
+        "B5G609-C05-A02",
+        "B5G610-C12-A01"
+      ]
+    },
+    {
+      "customer": "Vestas",
+      "project": "Alle Cat",
+      "customerProject": "VC",
+      "skirtNumber": 2,
+      "sectionType": "Bot.",
+      "sectionCode": "B",
+      "drawingBase": "29266563",
+      "drawingFull": "29266563-B02",
+      "heatNumbers": [
+        "A5H217-C13-A01",
+        "A5H217-C12-A02",
+        "A5H217-C13-A02",
+        "B5H753-C16-A02",
+        "B5H753-C16-A01",
+        "B5H753-C15-A01",
+        "B5H753-C14-A02",
+        "A5H217-C11-A02",
+        "A5H217-C11-A01",
+        "A5H217-C12-A01",
+        "B5H753-C15-A02",
+        "B5H753-C14-A01",
+        "B5F768-A14-A01"
+      ]
+    },
+    {
+      "customer": "Vestas",
+      "project": "Alle Cat",
+      "customerProject": "VC",
+      "skirtNumber": 1,
+      "sectionType": "Mid.1",
+      "sectionCode": "L",
+      "drawingBase": "29266568",
+      "drawingFull": "29266568-L01",
+      "heatNumbers": [
+        "B5H754-C25-A01",
+        "A5F308-A29-A01",
+        "B5F769-A26-A03",
+        "A5F308-A28-A01",
+        "B5F769-A25-A01",
+        "B5F769-A24-A02",
+        "B5F769-A23-A01",
+        "B5F769-A24-A01",
+        "B5F769-A23-A03",
+        "A5F308-A28-A03",
+        "B5F769-A24-A03",
+        "B5F769-A26-A02",
+        "B5F769-A23-A02"
+      ]
+    }
+  ],
+  "updatedAt": "2026-04-15T21:17:00.159Z"
+}

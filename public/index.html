@@ -1,0 +1,1290 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>CS Wind Heat Number OCR</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link href="https://cdn.jsdelivr.net/npm/@fortawesome/fontawesome-free@6.4.0/css/all.min.css" rel="stylesheet">
+  <style>
+    :root {
+      --bg-primary: #0d1117;
+      --bg-card: #161b22;
+      --bg-card-hover: #1c2128;
+      --border: #30363d;
+      --text-primary: #e6edf3;
+      --text-secondary: #8b949e;
+      --blue: #58a6ff;
+      --purple: #bc8cff;
+      --green: #3fb950;
+      --yellow: #d29922;
+      --red: #f85149;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { background: var(--bg-primary); color: var(--text-primary); font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', monospace; min-height: 100vh; }
+    ::-webkit-scrollbar { width: 6px; }
+    ::-webkit-scrollbar-track { background: var(--bg-primary); }
+    ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+
+    /* ── 헤더 ── */
+    .header { padding: 24px 32px 0; border-bottom: 1px solid var(--border); }
+    .header h1 { font-size: 1.5rem; font-weight: 700; }
+    .header p { color: var(--text-secondary); font-size: 0.8rem; margin-top: 4px; padding-bottom: 16px; }
+
+    /* ── 탭 ── */
+    .tabs { display: flex; border-bottom: 1px solid var(--border); padding: 0 32px; background: var(--bg-primary); }
+    .tab-btn { padding: 12px 20px; font-size: 0.85rem; color: var(--text-secondary); background: none; border: none; border-bottom: 2px solid transparent; cursor: pointer; transition: all 0.2s; }
+    .tab-btn:hover { color: var(--text-primary); }
+    .tab-btn.active { color: var(--text-primary); border-bottom-color: var(--blue); }
+
+    /* ── 메인 ── */
+    .main { padding: 24px 32px; }
+
+    /* ── 통계 카드 ── */
+    .stats-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin-bottom: 24px; }
+    .stat-card { background: var(--bg-card); border: 1px solid var(--border); border-radius: 8px; padding: 20px; }
+    .stat-value { font-size: 2.2rem; font-weight: 700; line-height: 1; margin-bottom: 8px; }
+    .stat-label { font-size: 0.7rem; color: var(--text-secondary); text-transform: uppercase; letter-spacing: 0.05em; }
+    .stat-blue { color: var(--blue); } .stat-purple { color: var(--purple); }
+    .stat-green { color: var(--green); } .stat-yellow { color: var(--yellow); }
+
+    /* ── 업로드 ── */
+    .upload-zone { border: 2px dashed var(--border); border-radius: 8px; padding: 40px; text-align: center; cursor: pointer; transition: all 0.2s; position: relative; background: var(--bg-card); }
+    .upload-zone:hover, .upload-zone.dragover { border-color: var(--blue); background: rgba(88,166,255,0.05); }
+    .upload-zone input { position: absolute; inset: 0; opacity: 0; cursor: pointer; width: 100%; height: 100%; }
+    .upload-icon { font-size: 2.5rem; color: var(--text-secondary); margin-bottom: 12px; }
+    .upload-text { color: var(--text-secondary); font-size: 0.9rem; }
+    .upload-text strong { color: var(--blue); }
+
+    /* ── 난이도 바 ── */
+    .difficulty-section { margin-bottom: 24px; }
+    .difficulty-section h2 { font-size: 0.95rem; font-weight: 600; margin-bottom: 12px; }
+    .difficulty-bar-wrap { display: flex; height: 28px; border-radius: 6px; overflow: hidden; gap: 2px; }
+    .diff-bar { display: flex; align-items: center; justify-content: center; font-size: 0.7rem; font-weight: 600; color: white; transition: all 0.3s; }
+    .diff-bar.easy { background: #238636; } .diff-bar.medium { background: #d29922; } .diff-bar.hard { background: #f85149; }
+    .diff-label { font-size: 0.75rem; color: var(--text-secondary); margin-top: 8px; display: flex; gap: 16px; }
+    .diff-label span { display: flex; align-items: center; gap: 4px; }
+    .dot { width: 10px; height: 10px; border-radius: 2px; }
+
+    /* ── 그리드 헤더 ── */
+    .grid-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px; }
+    .grid-header h2 { font-size: 0.95rem; font-weight: 600; }
+    .sort-btns { display: flex; gap: 6px; }
+    .sort-btn { padding: 4px 10px; font-size: 0.72rem; border-radius: 4px; border: 1px solid var(--border); background: var(--bg-card); color: var(--text-secondary); cursor: pointer; transition: all 0.2s; display: flex; align-items: center; gap: 4px; }
+    .sort-btn:hover { background: var(--bg-card-hover); color: var(--text-primary); }
+    .sort-btn.active { background: rgba(88,166,255,0.15); border-color: var(--blue); color: var(--blue); }
+
+    /* ── CSV 내보내기 버튼 ── */
+    .export-btn { padding: 4px 10px; font-size: 0.72rem; border-radius: 4px; border: 1px solid var(--border); background: var(--bg-card); color: var(--text-secondary); cursor: pointer; transition: all 0.2s; display: flex; align-items: center; gap: 4px; }
+    .export-btn:hover { background: var(--bg-card-hover); border-color: var(--green); color: var(--green); }
+
+    /* ── 이미지 카드 ── */
+    .image-grid { display: flex; flex-direction: column; gap: 8px; }
+    .image-card { background: var(--bg-card); border: 1px solid var(--border); border-radius: 8px; padding: 14px 16px; display: flex; align-items: center; gap: 16px; cursor: pointer; transition: all 0.2s; }
+    .image-card:hover { background: var(--bg-card-hover); border-color: #58a6ff44; }
+    .image-thumb { width: 80px; height: 60px; object-fit: cover; border-radius: 4px; border: 1px solid var(--border); flex-shrink: 0; background: #1c2128; }
+    .card-filename { font-size: 0.78rem; color: var(--text-secondary); margin-bottom: 6px; font-family: monospace; }
+    .card-lines { display: flex; flex-direction: column; gap: 4px; flex: 1; }
+    .card-line { display: flex; align-items: center; gap: 8px; }
+    .line-num { width: 14px; height: 14px; border-radius: 50%; background: rgba(139,148,158,0.2); color: var(--text-secondary); font-size: 0.65rem; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
+    .line-value { font-size: 0.82rem; font-family: monospace; color: var(--text-primary); font-weight: 500; }
+    .card-badges { display: flex; align-items: flex-end; gap: 6px; flex-shrink: 0; flex-direction: column; }
+
+    /* ── 배지 ── */
+    .badge { padding: 2px 8px; border-radius: 3px; font-size: 0.68rem; font-weight: 600; white-space: nowrap; }
+    .badge-diff-easy   { background: rgba(35,134,54,0.3);  color: #3fb950; border: 1px solid rgba(35,134,54,0.4); }
+    .badge-diff-medium { background: rgba(210,153,34,0.3); color: #d29922; border: 1px solid rgba(210,153,34,0.4); }
+    .badge-diff-hard   { background: rgba(248,81,73,0.3);  color: #f85149; border: 1px solid rgba(248,81,73,0.4); }
+    .badge-conf-high   { background: rgba(63,185,80,0.2);  color: #3fb950; border: 1px solid rgba(63,185,80,0.3); }
+    .badge-conf-medium { background: rgba(210,153,34,0.2); color: #d29922; border: 1px solid rgba(210,153,34,0.3); }
+    .badge-conf-low    { background: rgba(248,81,73,0.2);  color: #f85149; border: 1px solid rgba(248,81,73,0.3); }
+    .badge-agentic     { background: rgba(188,140,255,0.2); color: #bc8cff; border: 1px solid rgba(188,140,255,0.3); }
+    .badge-error       { background: rgba(248,81,73,0.15); color: #f85149; border: 1px solid rgba(248,81,73,0.3); }
+
+    .processing-card { border-color: rgba(88,166,255,0.4) !important; }
+    .pulse { animation: pulse 1.5s ease-in-out infinite; }
+    @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.4} }
+    .spinner { display: inline-block; width: 14px; height: 14px; border: 2px solid var(--border); border-top-color: var(--blue); border-radius: 50%; animation: spin 0.8s linear infinite; }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    /* ── 모달 ── */
+    .modal-overlay { position: fixed; inset: 0; background: rgba(1,4,9,0.85); display: flex; align-items: center; justify-content: center; z-index: 1000; padding: 20px; backdrop-filter: blur(4px); }
+    .modal-overlay.hidden { display: none; }
+    .modal { background: var(--bg-card); border: 1px solid var(--border); border-radius: 12px; width: 100%; max-width: 900px; max-height: 90vh; overflow-y: auto; position: relative; }
+    .modal-header { padding: 20px 24px 16px; border-bottom: 1px solid var(--border); display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; position: sticky; top: 0; background: var(--bg-card); z-index: 10; }
+    .modal-header h2 { font-size: 0.85rem; font-family: monospace; color: var(--text-secondary); margin-bottom: 8px; }
+    .modal-header-badges { display: flex; gap: 6px; flex-wrap: wrap; }
+    .modal-close { background: none; border: 1px solid var(--border); color: var(--text-secondary); width: 28px; height: 28px; border-radius: 4px; cursor: pointer; font-size: 0.9rem; flex-shrink: 0; transition: all 0.2s; }
+    .modal-close:hover { background: var(--bg-card-hover); color: var(--text-primary); }
+    .modal-body { display: grid; grid-template-columns: 1fr 1fr; gap: 0; }
+    .modal-image-side { padding: 20px; border-right: 1px solid var(--border); display: flex; flex-direction: column; gap: 16px; }
+    .modal-image-side img { width: 100%; border-radius: 8px; border: 1px solid var(--border); max-height: 300px; object-fit: contain; background: #0d1117; }
+    .final-result { background: rgba(88,166,255,0.08); border: 1px solid rgba(88,166,255,0.2); border-radius: 8px; padding: 16px; }
+    .final-result h3 { font-size: 0.75rem; color: var(--blue); text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 12px; }
+    .result-row { display: flex; align-items: center; gap: 10px; margin-bottom: 8px; }
+    .result-num { width: 20px; height: 20px; border-radius: 50%; background: rgba(88,166,255,0.2); color: var(--blue); font-size: 0.7rem; font-weight: 700; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
+    .result-val { font-family: monospace; font-size: 0.9rem; font-weight: 600; color: var(--text-primary); }
+    .result-check { margin-left: auto; font-size: 0.8rem; }
+    .check-ok { color: var(--green); } .check-fail { color: var(--red); }
+    .modal-results-side { padding: 20px; display: flex; flex-direction: column; gap: 16px; }
+    .method-block { background: var(--bg-primary); border: 1px solid var(--border); border-radius: 8px; padding: 16px; }
+    .method-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px; }
+    .method-title { font-size: 0.78rem; font-weight: 600; }
+    .method-title.standard { color: #58a6ff; } .method-title.agentic { color: #bc8cff; }
+    .method-elapsed { font-size: 0.7rem; color: var(--text-secondary); }
+    .method-line { display: flex; align-items: flex-start; gap: 8px; margin-bottom: 6px; }
+    .method-line-num { width: 16px; height: 16px; border-radius: 50%; background: rgba(139,148,158,0.15); color: var(--text-secondary); font-size: 0.62rem; display: flex; align-items: center; justify-content: center; flex-shrink: 0; margin-top: 1px; }
+    .method-line-val { font-family: monospace; font-size: 0.82rem; color: var(--text-primary); word-break: break-all; }
+    .method-notes { margin-top: 10px; padding-top: 10px; border-top: 1px solid var(--border); font-size: 0.75rem; color: var(--text-secondary); line-height: 1.5; }
+    .agentic-btn { width: 100%; padding: 10px; font-size: 0.82rem; font-weight: 600; background: rgba(188,140,255,0.15); border: 1px solid rgba(188,140,255,0.3); color: #bc8cff; border-radius: 6px; cursor: pointer; transition: all 0.2s; display: flex; align-items: center; justify-content: center; gap: 8px; }
+    .agentic-btn:hover { background: rgba(188,140,255,0.25); }
+    .agentic-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+    .validation-row { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 8px; }
+    .val-badge { padding: 2px 8px; border-radius: 3px; font-size: 0.68rem; font-weight: 600; }
+    .val-ok  { background: rgba(63,185,80,0.2);  color: #3fb950; border: 1px solid rgba(63,185,80,0.3); }
+    .val-fail{ background: rgba(248,81,73,0.2);  color: #f85149; border: 1px solid rgba(248,81,73,0.3); }
+    .modal-nav { display: flex; align-items: center; justify-content: space-between; padding: 16px 24px; border-top: 1px solid var(--border); }
+    .nav-btn { padding: 8px 16px; font-size: 0.82rem; background: var(--bg-card-hover); border: 1px solid var(--border); color: var(--text-primary); border-radius: 6px; cursor: pointer; transition: all 0.2s; display: flex; align-items: center; gap: 6px; }
+    .nav-btn:hover { border-color: var(--blue); color: var(--blue); }
+    .nav-btn:disabled { opacity: 0.3; cursor: not-allowed; }
+    .nav-position { font-size: 0.78rem; color: var(--text-secondary); }
+    .empty-state { text-align: center; padding: 60px 20px; color: var(--text-secondary); }
+    .empty-state i { font-size: 3rem; margin-bottom: 16px; display: block; }
+
+    /* ── 에러 박스 ── */
+    .error-box { background: rgba(248,81,73,0.1); border: 1px solid rgba(248,81,73,0.3); border-radius: 6px; padding: 10px 14px; font-size: 0.8rem; color: #f85149; margin-top: 8px; }
+    /* ── 성공 박스 ── */
+    .success-box { background: rgba(63,185,80,0.1); border: 1px solid rgba(63,185,80,0.3); border-radius: 6px; padding: 10px 14px; font-size: 0.8rem; color: #3fb950; margin-top: 8px; }
+
+    /* ── 설정 탭 ── */
+    .stab-btn { padding:8px 14px;font-size:0.78rem;color:var(--text-secondary);background:none;border:none;border-bottom:2px solid transparent;cursor:pointer;transition:all 0.2s;white-space:nowrap; }
+    .stab-btn:hover { color:var(--text-primary); }
+    .stab-active { color:var(--text-primary) !important; border-bottom-color:var(--blue) !important; }
+
+    /* ── 토글 스위치 ── */
+    .toggle-wrap { display: flex; align-items: center; gap: 10px; cursor: pointer; }
+    .toggle-track { width: 36px; height: 20px; background: var(--border); border-radius: 10px; position: relative; transition: background 0.2s; flex-shrink: 0; }
+    .toggle-track.on { background: rgba(63,185,80,0.5); border: 1px solid rgba(63,185,80,0.6); }
+    .toggle-thumb { width: 14px; height: 14px; background: var(--text-secondary); border-radius: 50%; position: absolute; top: 3px; left: 3px; transition: all 0.2s; }
+    .toggle-track.on .toggle-thumb { left: 19px; background: #3fb950; }
+
+    @media (max-width: 768px) {
+      .stats-grid { grid-template-columns: repeat(2, 1fr); }
+      .modal-body { grid-template-columns: 1fr; }
+      .modal-image-side { border-right: none; border-bottom: 1px solid var(--border); }
+      .main { padding: 16px; }
+      .header { padding: 16px 16px 0; }
+      .tabs { padding: 0 16px; }
+    }
+
+    /* ── Reference DB 스타일 ── */
+    .ref-badge-exact  { background: rgba(63,185,80,0.2);   color: #3fb950; border: 1px solid rgba(63,185,80,0.4);   padding: 2px 8px; border-radius: 3px; font-size: 0.7rem; font-weight: 700; }
+    .ref-badge-fuzzy  { background: rgba(210,153,34,0.2);  color: #d29922; border: 1px solid rgba(210,153,34,0.4);  padding: 2px 8px; border-radius: 3px; font-size: 0.7rem; font-weight: 700; }
+    .ref-info-block { background: rgba(63,185,80,0.06); border: 1px solid rgba(63,185,80,0.2); border-radius: 8px; padding: 14px 16px; font-size: 0.8rem; }
+    .ref-info-block.fuzzy { background: rgba(210,153,34,0.06); border-color: rgba(210,153,34,0.2); }
+    .ref-info-block.none  { background: rgba(139,148,158,0.04); border-color: rgba(139,148,158,0.15); }
+    .ref-row { display: flex; gap: 8px; margin-bottom: 6px; align-items: flex-start; }
+    .ref-label { font-size: 0.7rem; color: var(--text-secondary); width: 80px; flex-shrink: 0; padding-top: 1px; }
+    .ref-value { font-family: monospace; font-size: 0.82rem; color: var(--text-primary); font-weight: 600; }
+    .ref-db-status { display: inline-flex; align-items: center; gap: 5px; padding: 3px 10px; border-radius: 4px; font-size: 0.72rem; font-weight: 600; }
+    .ref-db-loaded { background: rgba(63,185,80,0.15);  color: #3fb950; border: 1px solid rgba(63,185,80,0.3); }
+    .ref-db-empty  { background: rgba(139,148,158,0.1); color: #8b949e; border: 1px solid rgba(139,148,158,0.25); }
+    .ref-dropzone { border: 2px dashed var(--border); border-radius: 8px; padding: 24px; text-align: center; cursor: pointer; transition: all 0.2s; position: relative; background: var(--bg-primary); }
+    .ref-dropzone:hover, .ref-dropzone.dragover { border-color: #3fb950; background: rgba(63,185,80,0.04); }
+    .ref-dropzone input { position: absolute; inset: 0; opacity: 0; cursor: pointer; width: 100%; height: 100%; }
+  </style>
+</head>
+<body>
+
+<div class="header">
+  <div style="display:flex;align-items:center;justify-content:space-between">
+    <h1><i class="fas fa-layer-group" style="color:#58a6ff;margin-right:8px"></i>CS Wind Heat Number OCR</h1>
+    <div style="display:flex;align-items:center;gap:8px">
+      <button onclick="exportCSV()" id="export-csv-btn" style="display:none;padding:6px 14px;font-size:0.78rem;border-radius:6px;border:1px solid var(--border);background:var(--bg-card);color:var(--text-secondary);cursor:pointer;display:none;align-items:center;gap:6px;transition:all 0.2s" onmouseover="this.style.borderColor='#3fb950';this.style.color='#3fb950'" onmouseout="this.style.borderColor='var(--border)';this.style.color='var(--text-secondary)'">
+        <i class="fas fa-download"></i> CSV 내보내기
+      </button>
+      <button onclick="openSettingsModal()" id="api-key-btn" style="padding:6px 14px;font-size:0.78rem;border-radius:6px;border:1px solid var(--border);background:var(--bg-card);color:var(--text-secondary);cursor:pointer;display:flex;align-items:center;gap:6px;transition:all 0.2s" onmouseover="this.style.borderColor='var(--blue)';this.style.color='var(--blue)'" onmouseout="this.style.borderColor=apiBtnBorderColor;this.style.color=apiBtnColor">
+        <i class="fas fa-cog"></i> <span id="api-key-status">설정</span>
+      </button>
+    </div>
+  </div>
+  <p id="header-subtitle">이미지를 업로드하면 철판 타각 문자를 자동 판독합니다 — <span id="gen-time"></span></p>
+</div>
+
+<!-- ───────────── 통합 설정 모달 ───────────── -->
+<div class="modal-overlay hidden" id="settings-modal-overlay" onclick="closeSettingsModalOutside(event)">
+  <div class="modal" style="max-width:700px">
+
+    <!-- 모달 헤더 -->
+    <div class="modal-header">
+      <div style="flex:1">
+        <h2 style="font-size:1rem;color:var(--text-primary);margin-bottom:10px">
+          <i class="fas fa-cog" style="color:var(--blue);margin-right:8px"></i>설정
+        </h2>
+        <!-- 설정 탭 -->
+        <div style="display:flex;gap:0;border-bottom:1px solid var(--border);margin-top:4px">
+          <button class="stab-btn stab-active" id="stab-apikey" onclick="switchSettingsTab('apikey')">
+            <i class="fas fa-key" style="margin-right:5px"></i>API Key
+          </button>
+          <button class="stab-btn" id="stab-prompt-std" onclick="switchSettingsTab('prompt-std')">
+            <i class="fas fa-bolt" style="margin-right:5px"></i>Standard 프롬프트
+          </button>
+          <button class="stab-btn" id="stab-prompt-agn" onclick="switchSettingsTab('prompt-agn')">
+            <i class="fas fa-eye" style="margin-right:5px"></i>Agentic 프롬프트
+          </button>
+          <button class="stab-btn" id="stab-refdb" onclick="switchSettingsTab('refdb')">
+            <i class="fas fa-database" style="margin-right:5px"></i>Reference DB
+          </button>
+        </div>
+      </div>
+      <button class="modal-close" onclick="closeSettingsModal()"><i class="fas fa-times"></i></button>
+    </div>
+
+    <!-- ── 탭 1: API Key ── -->
+    <div id="stab-content-apikey" style="padding:20px;display:flex;flex-direction:column;gap:16px">
+
+      <!-- 현재 설정 상태 표시 -->
+      <div id="current-key-status" style="display:none;background:rgba(63,185,80,0.08);border:1px solid rgba(63,185,80,0.25);border-radius:8px;padding:12px 16px">
+        <div style="display:flex;align-items:center;justify-content:space-between">
+          <div>
+            <p style="font-size:0.8rem;font-weight:600;color:#3fb950;margin-bottom:4px"><i class="fas fa-check-circle" style="margin-right:6px"></i>API 키 설정됨</p>
+            <p style="font-size:0.75rem;color:var(--text-secondary)">현재 키: <code id="current-key-preview" style="background:rgba(139,148,158,0.15);padding:2px 6px;border-radius:3px;font-family:monospace"></code></p>
+            <p id="persist-status-label" style="font-size:0.72rem;color:var(--text-secondary);margin-top:4px"></p>
+          </div>
+          <button onclick="clearApiKey()" style="padding:4px 10px;font-size:0.72rem;background:rgba(248,81,73,0.1);border:1px solid rgba(248,81,73,0.3);color:#f85149;border-radius:4px;cursor:pointer">
+            <i class="fas fa-trash" style="margin-right:4px"></i>삭제
+          </button>
+        </div>
+      </div>
+
+      <div>
+        <label style="font-size:0.78rem;color:var(--text-secondary);display:block;margin-bottom:6px">OpenAI API Key <span style="color:var(--red)">*</span></label>
+        <input type="password" id="apikey-input" placeholder="sk-..."
+          style="width:100%;padding:10px 12px;background:var(--bg-primary);border:1px solid var(--border);border-radius:6px;color:var(--text-primary);font-size:0.85rem;font-family:monospace;outline:none;transition:border 0.2s"
+          onfocus="this.style.borderColor='var(--blue)'" onblur="this.style.borderColor='var(--border)'"
+          onkeydown="if(event.key==='Enter') saveApiKey()">
+      </div>
+      <div>
+        <label style="font-size:0.78rem;color:var(--text-secondary);display:block;margin-bottom:6px">Base URL <span style="font-size:0.7rem">(선택, 기본값: https://api.openai.com/v1)</span></label>
+        <input type="text" id="apikey-baseurl" placeholder="https://api.openai.com/v1"
+          style="width:100%;padding:10px 12px;background:var(--bg-primary);border:1px solid var(--border);border-radius:6px;color:var(--text-primary);font-size:0.82rem;font-family:monospace;outline:none;transition:border 0.2s"
+          onfocus="this.style.borderColor='var(--blue)'" onblur="this.style.borderColor='var(--border)'">
+      </div>
+
+      <!-- 영구 저장 토글 -->
+      <div style="background:rgba(139,148,158,0.06);border:1px solid var(--border);border-radius:8px;padding:12px 16px">
+        <label class="toggle-wrap" onclick="togglePersist()">
+          <div class="toggle-track" id="persist-toggle-track">
+            <div class="toggle-thumb"></div>
+          </div>
+          <div>
+            <p style="font-size:0.82rem;font-weight:600;color:var(--text-primary)">서버 재시작 후에도 유지 (.dev.vars 저장)</p>
+            <p style="font-size:0.72rem;color:var(--text-secondary);margin-top:2px">켜면 서버 파일에 저장 · 끄면 메모리에만 저장 (재시작 시 초기화)</p>
+          </div>
+        </label>
+      </div>
+
+      <div id="apikey-error" class="error-box" style="display:none"></div>
+      <div id="apikey-success" class="success-box" style="display:none"></div>
+
+      <button onclick="saveApiKey()"
+        style="width:100%;padding:11px;font-size:0.88rem;font-weight:600;background:rgba(88,166,255,0.2);border:1px solid rgba(88,166,255,0.4);color:var(--blue);border-radius:6px;cursor:pointer;transition:all 0.2s"
+        onmouseover="this.style.background='rgba(88,166,255,0.3)'" onmouseout="this.style.background='rgba(88,166,255,0.2)'">
+        <i class="fas fa-save" style="margin-right:6px"></i>저장 및 적용
+      </button>
+    </div>
+
+    <!-- ── 탭 2: Standard 프롬프트 ── -->
+    <div id="stab-content-prompt-std" style="padding:20px;display:none;flex-direction:column;gap:12px">
+      <div style="display:flex;align-items:flex-start;justify-content:space-between;margin-bottom:4px;gap:12px">
+        <div>
+          <p style="font-size:0.82rem;font-weight:600;color:#58a6ff"><i class="fas fa-bolt" style="margin-right:6px"></i>Standard OCR 프롬프트</p>
+          <p style="font-size:0.72rem;color:var(--text-secondary);margin-top:2px">gpt-4o-mini 모델에 전달되는 기본 판독 지시문. 저장 즉시 다음 OCR 요청부터 반영됩니다.</p>
+        </div>
+        <button onclick="resetPrompt('standard')" title="기본값으로 초기화"
+          style="flex-shrink:0;padding:5px 10px;font-size:0.72rem;background:rgba(248,81,73,0.1);border:1px solid rgba(248,81,73,0.3);color:#f85149;border-radius:4px;cursor:pointer;white-space:nowrap">
+          <i class="fas fa-undo" style="margin-right:4px"></i>초기화
+        </button>
+      </div>
+      <textarea id="prompt-std-textarea" rows="16" spellcheck="false"
+        style="width:100%;padding:12px;background:var(--bg-primary);border:1px solid var(--border);border-radius:6px;color:var(--text-primary);font-size:0.8rem;font-family:monospace;line-height:1.6;outline:none;resize:vertical;transition:border 0.2s"
+        onfocus="this.style.borderColor='var(--blue)'" onblur="this.style.borderColor='var(--border)'"></textarea>
+      <div style="display:flex;gap:8px;align-items:center">
+        <div id="prompt-std-status" style="flex:1;font-size:0.75rem;color:var(--text-secondary)"></div>
+        <button onclick="savePrompt('standard')"
+          style="padding:9px 20px;font-size:0.85rem;font-weight:600;background:rgba(88,166,255,0.2);border:1px solid rgba(88,166,255,0.4);color:var(--blue);border-radius:6px;cursor:pointer;transition:all 0.2s"
+          onmouseover="this.style.background='rgba(88,166,255,0.3)'" onmouseout="this.style.background='rgba(88,166,255,0.2)'">
+          <i class="fas fa-save" style="margin-right:6px"></i>저장 (즉시 적용)
+        </button>
+      </div>
+    </div>
+
+    <!-- ── 탭 3: Agentic 프롬프트 ── -->
+    <div id="stab-content-prompt-agn" style="padding:20px;display:none;flex-direction:column;gap:12px">
+      <div style="display:flex;align-items:flex-start;justify-content:space-between;margin-bottom:4px;gap:12px">
+        <div>
+          <p style="font-size:0.82rem;font-weight:600;color:#bc8cff"><i class="fas fa-eye" style="margin-right:6px"></i>Agentic Vision 프롬프트</p>
+          <p style="font-size:0.72rem;color:var(--text-secondary);margin-top:2px">
+            gpt-4o 모델에 전달되는 고정밀 판독 지시문. 저장 즉시 다음 Agentic 실행부터 반영됩니다.<br>
+            <code style="background:rgba(188,140,255,0.15);padding:1px 5px;border-radius:3px;color:#bc8cff">{{HINT}}</code> 위치에 Standard OCR 결과가 자동 삽입됩니다.
+          </p>
+        </div>
+        <button onclick="resetPrompt('agentic')" title="기본값으로 초기화"
+          style="flex-shrink:0;padding:5px 10px;font-size:0.72rem;background:rgba(248,81,73,0.1);border:1px solid rgba(248,81,73,0.3);color:#f85149;border-radius:4px;cursor:pointer;white-space:nowrap">
+          <i class="fas fa-undo" style="margin-right:4px"></i>초기화
+        </button>
+      </div>
+      <textarea id="prompt-agn-textarea" rows="16" spellcheck="false"
+        style="width:100%;padding:12px;background:var(--bg-primary);border:1px solid var(--border);border-radius:6px;color:var(--text-primary);font-size:0.8rem;font-family:monospace;line-height:1.6;outline:none;resize:vertical;transition:border 0.2s"
+        onfocus="this.style.borderColor='var(--blue)'" onblur="this.style.borderColor='var(--border)'"></textarea>
+      <div style="display:flex;gap:8px;align-items:center">
+        <div id="prompt-agn-status" style="flex:1;font-size:0.75rem;color:var(--text-secondary)"></div>
+        <button onclick="savePrompt('agentic')"
+          style="padding:9px 20px;font-size:0.85rem;font-weight:600;background:rgba(188,140,255,0.2);border:1px solid rgba(188,140,255,0.4);color:#bc8cff;border-radius:6px;cursor:pointer;transition:all 0.2s"
+          onmouseover="this.style.background='rgba(188,140,255,0.3)'" onmouseout="this.style.background='rgba(188,140,255,0.2)'">
+          <i class="fas fa-save" style="margin-right:6px"></i>저장 (즉시 적용)
+        </button>
+      </div>
+    </div>
+
+    <!-- ── 탭 4: Reference DB ── -->
+    <div id="stab-content-refdb" style="padding:20px;display:none;flex-direction:column;gap:20px">
+
+      <!-- ── DB1: Plate Number DB (멀티파일) ── -->
+      <div style="background:rgba(88,166,255,0.04);border:1px solid rgba(88,166,255,0.2);border-radius:10px;padding:16px">
+        <!-- 헤더 -->
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px">
+          <div>
+            <p style="font-size:0.88rem;font-weight:700;color:var(--blue)"><i class="fas fa-tag" style="margin-right:6px"></i>DB1 — Plate Number DB <span style="font-size:0.7rem;font-weight:400;color:var(--text-secondary)">(Line 1: Plate/Heat Number)</span></p>
+            <p style="font-size:0.72rem;color:var(--text-secondary);margin-top:3px">프로젝트별 Excel 파일을 여러 개 등록 · 컬럼 G (Plate No) 자동 인식</p>
+          </div>
+          <div style="display:flex;align-items:center;gap:8px">
+            <span id="plate-db-badge" class="ref-db-status ref-db-empty"><i class="fas fa-circle" style="font-size:0.55rem"></i>&nbsp;미등록</span>
+            <button onclick="clearPlateDB()" title="전체 초기화" style="padding:4px 8px;font-size:0.7rem;background:rgba(248,81,73,0.1);border:1px solid rgba(248,81,73,0.3);color:#f85149;border-radius:4px;cursor:pointer">
+              <i class="fas fa-trash"></i> 전체삭제
+            </button>
+          </div>
+        </div>
+
+        <!-- 포맷 안내 -->
+        <div style="background:rgba(139,148,158,0.06);border-radius:6px;padding:8px 12px;margin-bottom:12px;font-size:0.72rem;color:var(--text-secondary);display:flex;gap:16px;flex-wrap:wrap">
+          <span>📌 <code style="background:rgba(88,166,255,0.1);padding:1px 4px;border-radius:3px;color:var(--blue)">알파뉴메릭</code> B5G610-C14-A02</span>
+          <span><code style="background:rgba(63,185,80,0.1);padding:1px 4px;border-radius:3px;color:#3fb950">숫자형</code> 5606726-01-1-01</span>
+        </div>
+
+        <!-- 등록 파일 리스트 -->
+        <div id="plate-file-list" style="display:none;margin-bottom:12px">
+          <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px">
+            <p style="font-size:0.78rem;font-weight:600;color:var(--text-primary)"><i class="fas fa-list" style="margin-right:5px;color:var(--blue)"></i>등록된 파일 <span id="plate-file-count" style="color:var(--blue)">0</span>개 · 총 <span id="plate-total-count" style="color:var(--blue)">0</span>개 Plate No</p>
+          </div>
+          <div id="plate-file-items" style="display:flex;flex-direction:column;gap:4px;max-height:220px;overflow-y:auto;padding-right:2px"></div>
+        </div>
+
+        <!-- Excel 업로드 (멀티) -->
+        <div class="ref-dropzone" id="plate-dropzone">
+          <input type="file" id="plate-file-input" accept=".xlsx,.xls" multiple>
+          <i class="fas fa-file-excel" style="font-size:2rem;color:#3fb950;margin-bottom:8px;display:block"></i>
+          <p style="font-size:0.85rem;color:var(--text-secondary)"><strong style="color:#3fb950">Excel 파일 선택</strong> 또는 드래그 앤 드롭</p>
+          <p style="font-size:0.72rem;color:var(--text-secondary);margin-top:4px">.xlsx / .xls · 여러 파일 동시 선택 가능</p>
+        </div>
+        <div id="plate-upload-status" style="font-size:0.75rem;color:var(--text-secondary);margin-top:8px;min-height:18px"></div>
+        <div id="plate-upload-error" class="error-box" style="display:none;margin-top:6px"></div>
+        <div id="plate-upload-success" class="success-box" style="display:none;margin-top:6px"></div>
+      </div>
+
+      <!-- ── DB2: Drawing Number DB ── -->
+      <div style="background:rgba(188,140,255,0.04);border:1px solid rgba(188,140,255,0.2);border-radius:10px;padding:16px">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px">
+          <div>
+            <p style="font-size:0.88rem;font-weight:700;color:var(--purple)"><i class="fas fa-drafting-compass" style="margin-right:6px"></i>DB2 — Drawing Number DB <span style="font-size:0.7rem;font-weight:400;color:var(--text-secondary)">(Line 3: Drawing Number)</span></p>
+            <p style="font-size:0.72rem;color:var(--text-secondary);margin-top:3px">컬럼 D (Skirt No) · F (Section Code) · G (Drawing No) 사용</p>
+          </div>
+          <div style="display:flex;align-items:center;gap:8px">
+            <span id="drawing-db-badge" class="ref-db-status ref-db-empty"><i class="fas fa-circle" style="font-size:0.55rem"></i>&nbsp;미등록</span>
+            <button onclick="clearDrawingDB()" title="DB2 초기화" style="padding:4px 8px;font-size:0.7rem;background:rgba(248,81,73,0.1);border:1px solid rgba(248,81,73,0.3);color:#f85149;border-radius:4px;cursor:pointer">
+              <i class="fas fa-trash"></i>
+            </button>
+          </div>
+        </div>
+
+        <!-- 컬럼 안내 -->
+        <div style="background:rgba(139,148,158,0.06);border-radius:6px;padding:10px 12px;margin-bottom:12px;font-size:0.72rem;color:var(--text-secondary)">
+          <p style="margin-bottom:4px">📌 사용 컬럼:</p>
+          <p>• 컬럼 <code style="background:rgba(188,140,255,0.1);padding:1px 5px;border-radius:3px;color:var(--purple)">D</code> — Skirt Number (예: u02 → 02)</p>
+          <p style="margin-top:3px">• 컬럼 <code style="background:rgba(188,140,255,0.1);padding:1px 5px;border-radius:3px;color:var(--purple)">F</code> — Section Code (B/L/M/U/W/T)</p>
+          <p style="margin-top:3px">• 컬럼 <code style="background:rgba(188,140,255,0.1);padding:1px 5px;border-radius:3px;color:var(--purple)">G</code> — Drawing Number (8자리, 예: 29311969)</p>
+          <p style="margin-top:3px">→ 조합 예시: <code>29311969-U02</code></p>
+        </div>
+
+        <div id="drawing-db-info" style="font-size:0.75rem;color:var(--text-secondary);margin-bottom:10px"></div>
+
+        <!-- Excel 업로드 -->
+        <div class="ref-dropzone" id="drawing-dropzone">
+          <input type="file" id="drawing-file-input" accept=".xlsx,.xls">
+          <i class="fas fa-file-excel" style="font-size:2rem;color:var(--purple);margin-bottom:8px;display:block"></i>
+          <p style="font-size:0.85rem;color:var(--text-secondary)"><strong style="color:var(--purple)">Excel 파일 선택</strong> 또는 드래그 앤 드롭</p>
+          <p style="font-size:0.72rem;color:var(--text-secondary);margin-top:4px">.xlsx / .xls 지원 · D=Skirt, F=Section, G=Drawing</p>
+        </div>
+        <div id="drawing-upload-status" style="font-size:0.75rem;color:var(--text-secondary);margin-top:8px;min-height:18px"></div>
+        <div id="drawing-upload-error" class="error-box" style="display:none;margin-top:6px"></div>
+        <div id="drawing-upload-success" class="success-box" style="display:none;margin-top:6px"></div>
+      </div>
+
+    </div>
+
+  </div>
+</div>
+
+<div class="tabs">
+  <button class="tab-btn active" onclick="switchTab('dashboard')"><i class="fas fa-chart-bar" style="margin-right:5px"></i>Dashboard</button>
+  <button class="tab-btn" onclick="switchTab('upload')"><i class="fas fa-upload" style="margin-right:5px"></i>Upload</button>
+</div>
+
+<div class="main">
+  <!-- 통계 카드 -->
+  <div class="stats-grid">
+    <div class="stat-card"><div class="stat-value stat-blue" id="stat-total">0</div><div class="stat-label">Total Images</div></div>
+    <div class="stat-card"><div class="stat-value stat-purple" id="stat-agentic">0</div><div class="stat-label">Used Agentic</div></div>
+    <div class="stat-card"><div class="stat-value stat-green" id="stat-high-conf">0</div><div class="stat-label">High Confidence</div></div>
+    <div class="stat-card"><div class="stat-value stat-yellow" id="stat-avg-diff">—</div><div class="stat-label">Avg Difficulty /10</div></div>
+  </div>
+
+  <!-- 업로드 -->
+  <div id="tab-upload" style="display:none;margin-bottom:24px">
+    <div class="upload-zone" id="upload-zone">
+      <input type="file" id="file-input" accept="image/*" multiple>
+      <div class="upload-icon"><i class="fas fa-cloud-upload-alt"></i></div>
+      <div class="upload-text">
+        <strong>파일 선택</strong> 또는 드래그 앤 드롭<br>
+        <span style="font-size:0.78rem;margin-top:4px;display:block">JPG, PNG, HEIC 지원 · 여러 파일 동시 업로드 가능</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- 난이도 분포 -->
+  <div class="difficulty-section">
+    <h2>Difficulty Distribution</h2>
+    <div class="difficulty-bar-wrap" id="diff-bar">
+      <div class="diff-bar easy" style="flex:1">No data</div>
+    </div>
+    <div class="diff-label">
+      <span><span class="dot" style="background:#238636"></span>Easy (1-3)</span>
+      <span><span class="dot" style="background:#d29922"></span>Medium (4-6)</span>
+      <span><span class="dot" style="background:#f85149"></span>Hard (7+)</span>
+    </div>
+  </div>
+
+  <!-- 이미지 그리드 -->
+  <div>
+    <div class="grid-header">
+      <h2>All Images</h2>
+      <div style="display:flex;gap:6px;align-items:center">
+        <div class="sort-btns">
+          <button class="sort-btn active" id="sort-hardest" onclick="sortImages('hardest')"><i class="fas fa-arrow-down"></i> Hardest first</button>
+          <button class="sort-btn" id="sort-easiest" onclick="sortImages('easiest')"><i class="fas fa-arrow-up"></i> Easiest first</button>
+        </div>
+        <button class="export-btn" id="csv-export-btn" onclick="exportCSV()" style="display:none">
+          <i class="fas fa-file-csv"></i> CSV
+        </button>
+      </div>
+    </div>
+    <div class="image-grid" id="image-grid">
+      <div class="empty-state"><i class="fas fa-image"></i><p>Upload 탭에서 이미지를 업로드하면 결과가 여기에 표시됩니다</p></div>
+    </div>
+  </div>
+</div>
+
+<!-- 이미지 상세 모달 -->
+<div class="modal-overlay hidden" id="modal-overlay" onclick="closeModalOutside(event)">
+  <div class="modal">
+    <div class="modal-header">
+      <div>
+        <h2 id="modal-filename">파일명</h2>
+        <div class="modal-header-badges" id="modal-badges"></div>
+      </div>
+      <button class="modal-close" onclick="closeModal()"><i class="fas fa-times"></i></button>
+    </div>
+    <div class="modal-body">
+      <div class="modal-image-side">
+        <img id="modal-img" src="" alt="Steel plate">
+        <div class="final-result">
+          <h3><i class="fas fa-check-circle" style="margin-right:6px"></i>Final OCR Result</h3>
+          <div class="result-row"><div class="result-num">1</div><div class="result-val" id="modal-final-1">—</div><span class="result-check" id="modal-check-1"></span></div>
+          <div class="result-row"><div class="result-num">2</div><div class="result-val" id="modal-final-2">—</div><span class="result-check" id="modal-check-2"></span></div>
+          <div class="result-row"><div class="result-num">3</div><div class="result-val" id="modal-final-3">—</div><span class="result-check" id="modal-check-3"></span></div>
+        </div>
+        <!-- Reference DB 매칭 블록 -->
+        <div id="modal-ref-block" style="display:none"></div>
+      </div>
+      <div class="modal-results-side">
+        <!-- Standard -->
+        <div class="method-block">
+          <div class="method-header">
+            <span class="method-title standard"><i class="fas fa-bolt" style="margin-right:4px"></i>Standard (gpt-4o-mini)</span>
+            <span class="method-elapsed" id="modal-std-elapsed">—</span>
+          </div>
+          <div id="modal-std-lines">
+            <div class="method-line"><span class="method-line-num">1</span><span class="method-line-val" id="modal-std-1">—</span></div>
+            <div class="method-line"><span class="method-line-num">2</span><span class="method-line-val" id="modal-std-2">—</span></div>
+            <div class="method-line"><span class="method-line-num">3</span><span class="method-line-val" id="modal-std-3">—</span></div>
+          </div>
+          <div class="validation-row" id="modal-std-validation"></div>
+          <div class="method-notes" id="modal-std-notes"></div>
+          <div id="modal-std-error" class="error-box" style="display:none"></div>
+        </div>
+        <!-- Agentic -->
+        <div class="method-block">
+          <div class="method-header">
+            <span class="method-title agentic"><i class="fas fa-eye" style="margin-right:4px"></i>Agentic Vision (gpt-4o)</span>
+            <span class="method-elapsed" id="modal-agn-elapsed">—</span>
+          </div>
+          <div id="modal-agn-lines">
+            <div style="color:var(--text-secondary);font-size:0.8rem;padding:8px 0">아직 실행되지 않았습니다</div>
+          </div>
+          <div class="validation-row" id="modal-agn-validation"></div>
+          <div class="method-notes" id="modal-agn-notes"></div>
+          <div id="modal-agn-error" class="error-box" style="display:none"></div>
+          <button class="agentic-btn" id="agentic-run-btn" onclick="runAgentic()" style="margin-top:12px">
+            <i class="fas fa-magic"></i> Agentic Vision 실행 (고정밀)
+          </button>
+        </div>
+      </div>
+    </div>
+    <div class="modal-nav">
+      <button class="nav-btn" id="nav-prev" onclick="navigateModal(-1)"><i class="fas fa-chevron-left"></i> 이전</button>
+      <span class="nav-position" id="nav-position">1 / 1</span>
+      <button class="nav-btn" id="nav-next" onclick="navigateModal(1)">다음 <i class="fas fa-chevron-right"></i></button>
+    </div>
+  </div>
+</div>
+
+<script>
+let images = []
+let sortMode = 'hardest'
+let currentModalIdx = -1
+let persistEnabled = false
+let apiBtnBorderColor = 'var(--border)'
+let apiBtnColor = 'var(--text-secondary)'
+
+document.getElementById('gen-time').textContent = 'Generated ' + new Date().toLocaleString('ko-KR')
+
+// ── 탭 ──────────────────────────────────────────────────────────────────────
+function switchTab(tab) {
+  document.querySelectorAll('.tab-btn').forEach((b,i) => {
+    b.classList.toggle('active', (i===0&&tab==='dashboard')||(i===1&&tab==='upload'))
+  })
+  document.getElementById('tab-upload').style.display = tab==='upload' ? 'block' : 'none'
+}
+
+// ── 업로드 ───────────────────────────────────────────────────────────────────
+const fileInput = document.getElementById('file-input')
+const uploadZone = document.getElementById('upload-zone')
+fileInput.addEventListener('change', e => handleFiles(e.target.files))
+uploadZone.addEventListener('dragover', e => { e.preventDefault(); uploadZone.classList.add('dragover') })
+uploadZone.addEventListener('dragleave', () => uploadZone.classList.remove('dragover'))
+uploadZone.addEventListener('drop', e => { e.preventDefault(); uploadZone.classList.remove('dragover'); handleFiles(e.dataTransfer.files) })
+
+function handleFiles(files) {
+  if (!files?.length) return
+  switchTab('dashboard')
+  Array.from(files).forEach(file => {
+    const reader = new FileReader()
+    reader.onload = e => {
+      const img = { id: Date.now()+Math.random(), filename: file.name, dataUrl: e.target.result, standardResult: null, agenticResult: null, status: 'processing' }
+      images.push(img)
+      renderGrid()
+      runStandard(img)
+    }
+    reader.readAsDataURL(file)
+  })
+}
+
+// ── Standard OCR ─────────────────────────────────────────────────────────────
+async function runStandard(img) {
+  try {
+    const base64 = img.dataUrl.split(',')[1]
+    const res = await fetch('/api/ocr/standard', {
+      method: 'POST',
+      headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({ imageBase64: base64 })
+    })
+    const data = await res.json()
+    if (data.error) {
+      img.standardResult = { error: data.error, line1:'', line2:'', line3:'', confidence:0, difficulty:10 }
+      img.status = 'error'
+    } else {
+      img.standardResult = data
+      img.status = 'done'
+    }
+  } catch(e) {
+    img.standardResult = { error: e.message, line1:'', line2:'', line3:'', confidence:0, difficulty:10 }
+    img.status = 'error'
+  }
+  renderGrid()
+  updateStats()
+  if (currentModalIdx >= 0 && images[currentModalIdx] === img) populateModal(currentModalIdx)
+  // 결과가 생기면 CSV 버튼 표시
+  document.getElementById('csv-export-btn').style.display = images.some(i=>i.status==='done') ? 'flex' : 'none'
+}
+
+// ── Agentic OCR ───────────────────────────────────────────────────────────────
+async function runAgentic() {
+  const img = images[currentModalIdx]
+  if (!img) return
+  const btn = document.getElementById('agentic-run-btn')
+  btn.disabled = true
+  btn.innerHTML = '<span class="spinner"></span> 분석 중...'
+  document.getElementById('modal-agn-elapsed').textContent = '실행 중...'
+  document.getElementById('modal-agn-lines').innerHTML =
+    '<div style="color:var(--text-secondary);font-size:0.8rem;padding:8px 0"><span class="pulse">⚡ Agentic Vision 분석 중...</span></div>'
+  document.getElementById('modal-agn-error').style.display = 'none'
+
+  try {
+    const base64 = img.dataUrl.split(',')[1]
+    const res = await fetch('/api/ocr/agentic', {
+      method: 'POST',
+      headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({ imageBase64: base64, standardResult: img.standardResult })
+    })
+    const data = await res.json()
+    if (data.error) {
+      document.getElementById('modal-agn-error').textContent = '오류: ' + data.error
+      document.getElementById('modal-agn-error').style.display = 'block'
+      document.getElementById('modal-agn-lines').innerHTML = ''
+    } else {
+      img.agenticResult = data
+      renderGrid(); updateStats(); populateModal(currentModalIdx)
+    }
+  } catch(e) {
+    document.getElementById('modal-agn-error').textContent = '오류: ' + e.message
+    document.getElementById('modal-agn-error').style.display = 'block'
+    document.getElementById('modal-agn-lines').innerHTML = ''
+  }
+  btn.disabled = false
+  btn.innerHTML = '<i class="fas fa-magic"></i> Agentic Vision 재실행'
+}
+
+// ── CSV 내보내기 ─────────────────────────────────────────────────────────────
+function exportCSV() {
+  const done = images.filter(i => i.status === 'done')
+  if (!done.length) return alert('내보낼 결과가 없습니다.')
+  const rows = [['Filename','Method','Heat Number','Material','Drawing Number','Confidence','Difficulty','Heat Valid','Material Valid','Drawing Valid','Notes']]
+  done.forEach(img => {
+    const r = img.agenticResult || img.standardResult
+    if (!r) return
+    const v = r.validation || {}
+    rows.push([
+      img.filename,
+      r.method || '',
+      r.line1 || '',
+      r.line2 || '',
+      r.line3 || '',
+      r.confidence || '',
+      r.difficulty || '',
+      v.heat ? 'OK' : 'FAIL',
+      v.material ? 'OK' : 'FAIL',
+      v.drawing ? 'OK' : 'FAIL',
+      (r.notes || '').replace(/,/g, ';')
+    ])
+  })
+  const csv = rows.map(r => r.map(c => `"${c}"`).join(',')).join('\n')
+  const blob = new Blob(['\uFEFF' + csv], { type: 'text/csv;charset=utf-8;' })
+  const url = URL.createObjectURL(blob)
+  const a = document.createElement('a')
+  a.href = url; a.download = `heat_number_ocr_${new Date().toISOString().slice(0,10)}.csv`
+  a.click(); URL.revokeObjectURL(url)
+}
+
+// ── 그리드 렌더링 ────────────────────────────────────────────────────────────
+function getResult(img) { return img.agenticResult || img.standardResult }
+function getDiff(img) { return getResult(img)?.difficulty || 10 }
+function diffClass(d) { return d<=3?'badge-diff-easy':d<=6?'badge-diff-medium':'badge-diff-hard' }
+function confClass(c) { return c>=0.7?'badge-conf-high':c>=0.4?'badge-conf-medium':'badge-conf-low' }
+function confLabel(c) { return c>=0.7?'high':c>=0.4?'medium':'low' }
+
+function renderGrid() {
+  const grid = document.getElementById('image-grid')
+  if (!images.length) {
+    grid.innerHTML = '<div class="empty-state"><i class="fas fa-image"></i><p>Upload 탭에서 이미지를 업로드하면 결과가 여기에 표시됩니다</p></div>'
+    return
+  }
+  const sorted = [...images].sort((a,b) => sortMode==='hardest' ? getDiff(b)-getDiff(a) : getDiff(a)-getDiff(b))
+  grid.innerHTML = sorted.map(img => {
+    const origIdx = images.indexOf(img)
+    if (img.status === 'processing') {
+      return `<div class="image-card processing-card">
+        <img class="image-thumb" src="${img.dataUrl}" alt="">
+        <div style="flex:1">
+          <div class="card-filename">${img.filename}</div>
+          <div style="color:var(--text-secondary);font-size:0.82rem;margin-top:6px"><span class="spinner"></span> OCR 분석 중...</div>
+        </div>
+      </div>`
+    }
+    const r = getResult(img); const d = getDiff(img); const c = r?.confidence||0
+    const hasError = img.status === 'error'
+    return `<div class="image-card" onclick="openModal(${origIdx})">
+      <img class="image-thumb" src="${img.dataUrl}" alt="">
+      <div style="flex:1;min-width:0">
+        <div class="card-filename">${img.filename}</div>
+        <div class="card-lines">
+          ${[1,2,3].map(n=>`<div class="card-line"><span class="line-num">${n}</span><span class="line-value">${r?.['line'+n]||'—'}</span></div>`).join('')}
+        </div>
+      </div>
+      <div class="card-badges">
+        <span class="badge ${hasError?'badge-error':diffClass(d)}">${hasError?'Error':'Difficulty '+d+'/10'}</span>
+        ${!hasError?`<span class="badge ${confClass(c)}">Confidence: ${confLabel(c)}</span>`:''}
+        ${img.agenticResult?'<span class="badge badge-agentic">Agentic Vision</span>':''}
+      </div>
+    </div>`
+  }).join('')
+  updateDiffBar()
+}
+
+function updateDiffBar() {
+  const done = images.filter(i=>i.status==='done')
+  if (!done.length) return
+  const e=done.filter(i=>getDiff(i)<=3).length, m=done.filter(i=>getDiff(i)>=4&&getDiff(i)<=6).length, h=done.filter(i=>getDiff(i)>=7).length
+  document.getElementById('diff-bar').innerHTML =
+    (e>0?`<div class="diff-bar easy" style="flex:${e}">${e} Easy (1-3)</div>`:'')+
+    (m>0?`<div class="diff-bar medium" style="flex:${m}">${m} Medium (4-6)</div>`:'')+
+    (h>0?`<div class="diff-bar hard" style="flex:${h}">${h} Hard (7+)</div>`:'')
+}
+
+function updateStats() {
+  const done=images.filter(i=>i.status==='done')
+  const agn=images.filter(i=>!!i.agenticResult).length
+  const hc=done.filter(i=>(getResult(i)?.confidence||0)>=0.7).length
+  const avg=done.length?(done.reduce((s,i)=>s+getDiff(i),0)/done.length).toFixed(1):'—'
+  document.getElementById('stat-total').textContent=images.length
+  document.getElementById('stat-agentic').textContent=agn+(agn>0?` (${agn}/${images.length})`:'')
+  document.getElementById('stat-high-conf').textContent=hc
+  document.getElementById('stat-avg-diff').textContent=avg
+}
+
+function sortImages(mode) {
+  sortMode=mode
+  document.getElementById('sort-hardest').classList.toggle('active',mode==='hardest')
+  document.getElementById('sort-easiest').classList.toggle('active',mode==='easiest')
+  renderGrid()
+}
+
+// ── 이미지 모달 ───────────────────────────────────────────────────────────────
+function openModal(idx) { currentModalIdx=idx; populateModal(idx); document.getElementById('modal-overlay').classList.remove('hidden'); document.body.style.overflow='hidden' }
+function closeModal() { document.getElementById('modal-overlay').classList.add('hidden'); document.body.style.overflow='' }
+function closeModalOutside(e) { if (e.target===document.getElementById('modal-overlay')) closeModal() }
+function navigateModal(dir) { const n=currentModalIdx+dir; if(n<0||n>=images.length)return; currentModalIdx=n; populateModal(n) }
+
+function populateModal(idx) {
+  const img = images[idx]; if(!img) return
+  document.getElementById('modal-filename').textContent = img.filename
+  document.getElementById('modal-img').src = img.dataUrl
+  document.getElementById('nav-prev').disabled = idx===0
+  document.getElementById('nav-next').disabled = idx===images.length-1
+  document.getElementById('nav-position').textContent = `${idx+1} / ${images.length}`
+
+  const r=getResult(img); const d=getDiff(img); const c=r?.confidence||0
+  document.getElementById('modal-badges').innerHTML =
+    `<span class="badge ${diffClass(d)}">Difficulty ${d}/10</span>
+     <span class="badge ${confClass(c)}">Confidence: ${confLabel(c)}</span>
+     ${img.agenticResult?'<span class="badge badge-agentic">Agentic Vision</span>':''}`
+
+  ;[1,2,3].forEach(n=>{
+    document.getElementById('modal-final-'+n).textContent = r?.['line'+n]||'—'
+    const v=r?.validation
+    if(v){const ok=n===1?v.heat:n===2?v.material:v.drawing; document.getElementById('modal-check-'+n).innerHTML=ok?'<span class="check-ok">✓</span>':'<span class="check-fail">✗</span>'}
+  })
+
+  // Reference DB 매칭 블록 (새 구조: plate + drawing 분리)
+  const refBlockEl = document.getElementById('modal-ref-block')
+  const refM = r?.refMatch
+  if (refM && refM.matched) {
+    const isExact = refM.confidence >= 0.9
+    const plate = refM.plate
+    const drawing = refM.drawing
+    refBlockEl.style.display = 'block'
+    let rows = ''
+    if (plate) {
+      rows += `<div class="ref-row"><span class="ref-label">Plate No</span><span class="ref-value" style="color:#3fb950">${plate.plateNo}</span></div>`
+      rows += `<div class="ref-row"><span class="ref-label">Heat No</span><span class="ref-value" style="color:#58a6ff">${plate.heatNo}</span></div>`
+      rows += `<div class="ref-row"><span class="ref-label">타입</span><span class="ref-value" style="font-size:0.72rem;color:var(--text-secondary)">${plate.type === 'alpha' ? '알파뉴메릭' : '숫자형'} · ${plate.matchMethod}</span></div>`
+    }
+    if (drawing) {
+      rows += `<div class="ref-row"><span class="ref-label">도면번호</span><span class="ref-value" style="color:#58a6ff">${drawing.drawingFull}</span></div>`
+      rows += `<div class="ref-row"><span class="ref-label">섹션/스커트</span><span class="ref-value" style="font-size:0.72rem;color:var(--text-secondary)">Section ${drawing.sectionCode} · Skirt #${drawing.skirtNo} · ${drawing.matchMethod}</span></div>`
+    }
+    refBlockEl.innerHTML = `
+      <div class="ref-info-block ${isExact?'':'fuzzy'}" style="margin-top:8px">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
+          <p style="font-size:0.75rem;font-weight:700;color:${isExact?'#3fb950':'#d29922'}">
+            <i class="fas fa-${isExact?'check-circle':'exclamation-circle'}" style="margin-right:5px"></i>
+            Reference DB ${isExact ? '확정 매칭' : '근사 매칭'}
+          </p>
+          <span class="${isExact?'ref-badge-exact':'ref-badge-fuzzy'}">${(refM.confidence*100).toFixed(0)}%</span>
+        </div>
+        ${rows}
+      </div>`
+  } else if (refM) {
+    refBlockEl.style.display = 'block'
+    refBlockEl.innerHTML = `<div class="ref-info-block none" style="margin-top:8px"><p style="font-size:0.75rem;color:var(--text-secondary)"><i class="fas fa-info-circle" style="margin-right:5px"></i>Reference DB 매칭 없음</p></div>`
+  } else {
+    refBlockEl.style.display = 'none'
+  }
+
+  // Standard 결과
+  const std=img.standardResult
+  const stdErr=document.getElementById('modal-std-error')
+  if(std?.error) {
+    stdErr.textContent='오류: '+std.error; stdErr.style.display='block'
+    document.getElementById('modal-std-elapsed').textContent=''
+  } else if(std) {
+    stdErr.style.display='none'
+    document.getElementById('modal-std-elapsed').textContent=std.elapsed||''
+    ;[1,2,3].forEach(n=>document.getElementById('modal-std-'+n).textContent=std['line'+n]||'—')
+    const sv=std.validation
+    document.getElementById('modal-std-validation').innerHTML=sv?[{k:'heat',l:'Heat#'},{k:'material',l:'Material'},{k:'drawing',l:'Drawing#'}].map(({k,l})=>`<span class="val-badge ${sv[k]?'val-ok':'val-fail'}">${l}: ${sv[k]?'✓':'✗'}</span>`).join(''):''
+    document.getElementById('modal-std-notes').textContent=std.notes||''
+  }
+
+  // Agentic 결과
+  const agn=img.agenticResult
+  const agnErr=document.getElementById('modal-agn-error')
+  const btn=document.getElementById('agentic-run-btn')
+  if(agn&&!agn.error) {
+    agnErr.style.display='none'
+    document.getElementById('modal-agn-elapsed').textContent=agn.elapsed||''
+    document.getElementById('modal-agn-lines').innerHTML=[1,2,3].map(n=>`<div class="method-line"><span class="method-line-num">${n}</span><span class="method-line-val">${agn['line'+n]||'—'}</span></div>`).join('')
+    const av=agn.validation
+    document.getElementById('modal-agn-validation').innerHTML=av?[{k:'heat',l:'Heat#'},{k:'material',l:'Material'},{k:'drawing',l:'Drawing#'}].map(({k,l})=>`<span class="val-badge ${av[k]?'val-ok':'val-fail'}">${l}: ${av[k]?'✓':'✗'}</span>`).join(''):''
+    document.getElementById('modal-agn-notes').textContent=agn.notes||''
+    btn.innerHTML='<i class="fas fa-magic"></i> Agentic Vision 재실행'; btn.disabled=false
+  } else if(!agn) {
+    agnErr.style.display='none'
+    document.getElementById('modal-agn-lines').innerHTML='<div style="color:var(--text-secondary);font-size:0.8rem;padding:8px 0">아직 실행되지 않았습니다</div>'
+    document.getElementById('modal-agn-validation').innerHTML=''
+    document.getElementById('modal-agn-notes').textContent=''
+    document.getElementById('modal-agn-elapsed').textContent='—'
+    btn.innerHTML='<i class="fas fa-magic"></i> Agentic Vision 실행 (고정밀)'; btn.disabled=false
+  }
+}
+
+document.addEventListener('keydown', e=>{
+  if(!document.getElementById('modal-overlay').classList.contains('hidden')){
+    if(e.key==='ArrowLeft') navigateModal(-1)
+    if(e.key==='ArrowRight') navigateModal(1)
+    if(e.key==='Escape') closeModal()
+  }
+})
+
+// ── 통합 설정 모달 ────────────────────────────────────────────────────────────
+function openSettingsModal() {
+  document.getElementById('settings-modal-overlay').classList.remove('hidden')
+  document.body.style.overflow = 'hidden'
+  loadPrompts()
+}
+function closeSettingsModal() {
+  document.getElementById('settings-modal-overlay').classList.add('hidden')
+  document.body.style.overflow = ''
+}
+function closeSettingsModalOutside(e) {
+  if (e.target === document.getElementById('settings-modal-overlay')) closeSettingsModal()
+}
+
+// 설정 내부 탭 전환
+function switchSettingsTab(tab) {
+  const tabs = ['apikey', 'prompt-std', 'prompt-agn', 'refdb']
+  tabs.forEach(t => {
+    document.getElementById('stab-' + t).classList.toggle('stab-active', t === tab)
+    const el = document.getElementById('stab-content-' + t)
+    el.style.display = t === tab ? 'flex' : 'none'
+  })
+  if (tab === 'apikey') setTimeout(() => document.getElementById('apikey-input').focus(), 100)
+  if (tab === 'refdb') { loadDBStatus() }  // loadDBStatus 내부에서 loadPlateFileList 자동 호출
+}
+
+// 영구 저장 토글
+function togglePersist() {
+  persistEnabled = !persistEnabled
+  const track = document.getElementById('persist-toggle-track')
+  track.classList.toggle('on', persistEnabled)
+}
+
+// API Key 저장
+async function saveApiKey() {
+  const apiKey = document.getElementById('apikey-input').value.trim()
+  const baseURL = document.getElementById('apikey-baseurl').value.trim()
+  const errEl = document.getElementById('apikey-error')
+  const sucEl = document.getElementById('apikey-success')
+  errEl.style.display = 'none'
+  sucEl.style.display = 'none'
+
+  if (!apiKey) { errEl.textContent = 'API Key를 입력해주세요'; errEl.style.display = 'block'; return }
+  if (!apiKey.startsWith('sk-')) { errEl.textContent = 'API Key는 sk- 로 시작해야 합니다'; errEl.style.display = 'block'; return }
+
+  try {
+    const res = await fetch('/api/config', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ apiKey, baseURL: baseURL || 'https://api.openai.com/v1', persist: persistEnabled })
+    })
+    const data = await res.json()
+    if (data.ok) {
+      const persistMsg = data.persisted ? ' (.dev.vars에 영구 저장됨)' : ' (메모리에만 저장)'
+      sucEl.textContent = `✓ API Key 저장 완료${persistMsg}`
+      sucEl.style.display = 'block'
+      updateApiKeyBtnState(true)
+      checkApiStatus()
+      document.getElementById('apikey-input').value = ''
+      setTimeout(() => { sucEl.style.display = 'none'; closeSettingsModal() }, 2000)
+    } else {
+      errEl.textContent = data.error || '저장 실패'; errEl.style.display = 'block'
+    }
+  } catch(e) { errEl.textContent = e.message; errEl.style.display = 'block' }
+}
+
+// API Key 삭제
+async function clearApiKey() {
+  if (!confirm('저장된 API Key를 삭제할까요? .dev.vars 파일도 초기화됩니다.')) return
+  try {
+    await fetch('/api/config', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ apiKey: 'CLEARED', baseURL: 'https://api.openai.com/v1', persist: true })
+    })
+  } catch(e) {}
+  updateApiKeyBtnState(false)
+  document.getElementById('current-key-status').style.display = 'none'
+}
+
+function updateApiKeyBtnState(configured) {
+  const btn = document.getElementById('api-key-btn')
+  const status = document.getElementById('api-key-status')
+  if (configured) {
+    status.innerHTML = '<i class="fas fa-check-circle" style="color:#3fb950"></i> 설정됨'
+    btn.style.borderColor = 'rgba(63,185,80,0.4)'
+    btn.style.color = '#3fb950'
+    apiBtnBorderColor = 'rgba(63,185,80,0.4)'
+    apiBtnColor = '#3fb950'
+  } else {
+    status.textContent = '설정'
+    btn.style.borderColor = 'var(--border)'
+    btn.style.color = 'var(--text-secondary)'
+    apiBtnBorderColor = 'var(--border)'
+    apiBtnColor = 'var(--text-secondary)'
+  }
+}
+
+// 프롬프트 불러오기
+async function loadPrompts() {
+  try {
+    const res = await fetch('/api/prompts')
+    const data = await res.json()
+    document.getElementById('prompt-std-textarea').value = data.standard || ''
+    document.getElementById('prompt-agn-textarea').value = data.agentic || ''
+    document.getElementById('prompt-std-status').textContent = `현재 ${data.standard?.length || 0}자`
+    document.getElementById('prompt-agn-status').textContent = `현재 ${data.agentic?.length || 0}자`
+  } catch(e) { console.error('prompts load failed', e) }
+}
+
+// 프롬프트 저장 → 백엔드에 즉시 반영
+async function savePrompt(type) {
+  const ta = document.getElementById(type === 'standard' ? 'prompt-std-textarea' : 'prompt-agn-textarea')
+  const statusEl = document.getElementById(type === 'standard' ? 'prompt-std-status' : 'prompt-agn-status')
+  const prompt = ta.value.trim()
+  if (!prompt) return
+  try {
+    const res = await fetch('/api/prompts', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ type, prompt })
+    })
+    const data = await res.json()
+    if (data.ok) {
+      statusEl.innerHTML = `<span style="color:#3fb950"><i class="fas fa-check" style="margin-right:4px"></i>저장됨 — 다음 OCR부터 즉시 적용 (${data.length}자)</span>`
+      setTimeout(() => { statusEl.textContent = `현재 ${data.length}자` }, 3000)
+    } else {
+      statusEl.innerHTML = `<span style="color:#f85149">오류: ${data.error}</span>`
+    }
+  } catch(e) { statusEl.innerHTML = `<span style="color:#f85149">오류: ${e.message}</span>` }
+}
+
+// 프롬프트 초기화
+async function resetPrompt(type) {
+  if (!confirm(`${type === 'standard' ? 'Standard' : 'Agentic'} 프롬프트를 기본값으로 초기화할까요?`)) return
+  try {
+    await fetch('/api/prompts/reset', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ type })
+    })
+    loadPrompts()
+  } catch(e) {}
+}
+
+// 앱 시작 시 API Key 상태 확인
+async function checkApiStatus() {
+  try {
+    const res = await fetch('/api/config/status')
+    const data = await res.json()
+    if (data.configured) {
+      updateApiKeyBtnState(true)
+      const keyEl = document.getElementById('current-key-status')
+      const previewEl = document.getElementById('current-key-preview')
+      const persistLabel = document.getElementById('persist-status-label')
+      keyEl.style.display = 'block'
+      previewEl.textContent = data.keyPreview || ''
+      persistLabel.textContent = data.persisted ? '💾 .dev.vars에 영구 저장됨 (서버 재시작 후에도 유지)' : '⚠️ 메모리에만 저장됨 (서버 재시작 시 초기화)'
+      if (data.persisted) {
+        document.getElementById('persist-toggle-track').classList.add('on')
+        persistEnabled = true
+      }
+    }
+  } catch(e) {}
+}
+
+// textarea 글자수 실시간 표시
+document.getElementById('prompt-std-textarea').addEventListener('input', function() {
+  document.getElementById('prompt-std-status').textContent = `현재 ${this.value.length}자`
+})
+document.getElementById('prompt-agn-textarea').addEventListener('input', function() {
+  document.getElementById('prompt-agn-status').textContent = `현재 ${this.value.length}자`
+})
+
+// Escape 키로 설정 모달 닫기
+document.addEventListener('keydown', e => {
+  if (e.key === 'Escape' && !document.getElementById('settings-modal-overlay').classList.contains('hidden')) {
+    closeSettingsModal()
+  }
+})
+
+checkApiStatus()
+loadDBStatus()  // 내부에서 loadPlateFileList()도 호출됨
+
+// ── Reference DB (Plate DB 멀티파일 + Drawing DB 단일파일) ──────────────────
+const plateFileInput = document.getElementById('plate-file-input')
+const plateDropzone = document.getElementById('plate-dropzone')
+const drawingFileInput = document.getElementById('drawing-file-input')
+const drawingDropzone = document.getElementById('drawing-dropzone')
+
+// ── Plate DB: 멀티파일 업로드 ─────────────────────────────────────────────────
+plateFileInput.addEventListener('change', e => {
+  if(e.target.files?.length) uploadPlateFiles(Array.from(e.target.files))
+})
+plateDropzone.addEventListener('dragover', e => { e.preventDefault(); plateDropzone.classList.add('dragover') })
+plateDropzone.addEventListener('dragleave', () => plateDropzone.classList.remove('dragover'))
+plateDropzone.addEventListener('drop', e => {
+  e.preventDefault(); plateDropzone.classList.remove('dragover')
+  const files = Array.from(e.dataTransfer.files).filter(f => /\.(xlsx|xls)$/i.test(f.name))
+  if(files.length) uploadPlateFiles(files)
+})
+
+async function uploadPlateFiles(files) {
+  const statusEl = document.getElementById('plate-upload-status')
+  const errEl = document.getElementById('plate-upload-error')
+  const sucEl = document.getElementById('plate-upload-success')
+  errEl.style.display = 'none'; sucEl.style.display = 'none'
+  statusEl.innerHTML = `<span class="spinner"></span> ${files.length}개 파일 업로드 중...`
+
+  const formData = new FormData()
+  files.forEach(f => formData.append('files', f))
+
+  try {
+    const res = await fetch('/api/db/plate/upload', { method: 'POST', body: formData })
+    const data = await res.json()
+    if (data.ok) {
+      const ok = data.uploaded || []
+      const errs = data.errors || []
+      let msg = `✓ ${ok.length}개 파일 처리 (총 ${data.totalEntries.toLocaleString()}개 Plate No)`
+      if (ok.length) {
+        msg += `<div style="margin-top:5px;display:flex;flex-direction:column;gap:2px">`
+        ok.forEach(f => {
+          msg += `<span style="font-size:0.7rem">• <code>${f.filename}</code> — ${f.count}개 (알파:${f.alphaCount}, 숫자:${f.numericCount})${f.replaced ? ' <em style="color:#d29922">[갱신]</em>' : ''}</span>`
+        })
+        msg += `</div>`
+      }
+      if (errs.length) {
+        msg += `<div style="margin-top:4px;color:#f85149;font-size:0.7rem">오류: ${errs.map(e => e.filename).join(', ')}</div>`
+      }
+      sucEl.innerHTML = msg; sucEl.style.display = 'block'; statusEl.textContent = ''
+      plateFileInput.value = ''
+      loadDBStatus()
+      loadPlateFileList()
+    } else {
+      errEl.textContent = '오류: ' + data.error; errEl.style.display = 'block'; statusEl.textContent = ''
+    }
+  } catch(e) { errEl.textContent = '오류: ' + e.message; errEl.style.display = 'block'; statusEl.textContent = '' }
+}
+
+// ── Plate 파일 리스트 렌더링 ──────────────────────────────────────────────────
+async function loadPlateFileList() {
+  try {
+    const res = await fetch('/api/db/plate/files')
+    const data = await res.json()
+    const listEl = document.getElementById('plate-file-list')
+    const itemsEl = document.getElementById('plate-file-items')
+    const countEl = document.getElementById('plate-file-count')
+    const totalEl = document.getElementById('plate-total-count')
+
+    if (!listEl) return
+
+    if (!data.files?.length) {
+      listEl.style.display = 'none'
+      return
+    }
+
+    listEl.style.display = 'block'
+    if(countEl) countEl.textContent = data.totalFiles
+    if(totalEl) totalEl.textContent = data.totalEntries.toLocaleString()
+
+    itemsEl.innerHTML = data.files.map(f => `
+      <div style="display:flex;align-items:center;gap:8px;padding:7px 10px;background:rgba(88,166,255,0.05);border:1px solid rgba(88,166,255,0.15);border-radius:6px" id="plate-file-row-${f.fileId}">
+        <i class="fas fa-file-excel" style="color:#3fb950;font-size:0.85rem;flex-shrink:0"></i>
+        <div style="flex:1;min-width:0">
+          <p style="font-size:0.78rem;font-weight:600;color:var(--text-primary);overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${f.filename}">${f.filename}</p>
+          <p style="font-size:0.68rem;color:var(--text-secondary);margin-top:1px">
+            ${f.count}개 · 알파:${f.alphaCount} / 숫자:${f.numericCount}
+            <span style="margin-left:6px;opacity:0.7">${new Date(f.uploadedAt).toLocaleDateString('ko-KR')}</span>
+          </p>
+        </div>
+        <button onclick="deletePlateFile('${f.fileId}','${f.filename.replace(/'/g,"\\'")}' )"
+          style="flex-shrink:0;padding:3px 8px;font-size:0.68rem;background:rgba(248,81,73,0.1);border:1px solid rgba(248,81,73,0.3);color:#f85149;border-radius:3px;cursor:pointer;white-space:nowrap"
+          title="이 파일 삭제">
+          <i class="fas fa-times"></i>
+        </button>
+      </div>`).join('')
+  } catch(e) { console.error('[plateFileList]', e) }
+}
+
+async function deletePlateFile(fileId, filename) {
+  if (!confirm(`"${filename}" 파일을 삭제할까요?\n이 파일의 Plate Number들이 DB에서 제거됩니다.`)) return
+  try {
+    const res = await fetch(`/api/db/plate/file/${fileId}`, { method: 'DELETE' })
+    const data = await res.json()
+    if (data.ok) {
+      loadDBStatus()
+      loadPlateFileList()
+    }
+  } catch(e) { console.error('[deletePlateFile]', e) }
+}
+
+async function clearPlateDB() {
+  if (!confirm('Plate Number DB를 전체 초기화할까요? 등록된 모든 파일이 삭제됩니다.')) return
+  await fetch('/api/db/plate', { method: 'DELETE' })
+  loadDBStatus()
+  loadPlateFileList()
+  document.getElementById('plate-upload-success').style.display = 'none'
+}
+
+// ── Drawing DB: 단일파일 ───────────────────────────────────────────────────────
+drawingFileInput.addEventListener('change', e => { if(e.target.files[0]) uploadDrawingFile(e.target.files[0]) })
+drawingDropzone.addEventListener('dragover', e => { e.preventDefault(); drawingDropzone.classList.add('dragover') })
+drawingDropzone.addEventListener('dragleave', () => drawingDropzone.classList.remove('dragover'))
+drawingDropzone.addEventListener('drop', e => {
+  e.preventDefault(); drawingDropzone.classList.remove('dragover')
+  const f = e.dataTransfer.files[0]
+  if(f && /\.(xlsx|xls)$/i.test(f.name)) uploadDrawingFile(f)
+})
+
+async function uploadDrawingFile(file) {
+  const statusEl = document.getElementById('drawing-upload-status')
+  const errEl = document.getElementById('drawing-upload-error')
+  const sucEl = document.getElementById('drawing-upload-success')
+  errEl.style.display = 'none'; sucEl.style.display = 'none'
+  statusEl.innerHTML = '<span class="spinner"></span> 업로드 중...'
+
+  const formData = new FormData()
+  formData.append('file', file)
+
+  try {
+    const res = await fetch('/api/db/drawing/upload', { method: 'POST', body: formData })
+    const data = await res.json()
+    if (data.ok) {
+      let msg = `✓ ${data.count.toLocaleString()}개 도면번호 등록완료`
+      if (data.skipped > 0) msg += ` / ${data.skipped}행 스킵`
+      if (data.sample?.length) {
+        msg += `<br>샘플: ${data.sample.map(e => `<code style="background:rgba(188,140,255,0.1);padding:1px 4px;border-radius:2px">${e.drawingFull}</code>`).join(', ')}`
+      }
+      sucEl.innerHTML = msg; sucEl.style.display = 'block'; statusEl.textContent = ''
+      loadDBStatus()
+    } else {
+      errEl.textContent = '오류: ' + data.error; errEl.style.display = 'block'; statusEl.textContent = ''
+    }
+  } catch(e) { errEl.textContent = '오류: ' + e.message; errEl.style.display = 'block'; statusEl.textContent = '' }
+}
+
+async function clearDrawingDB() {
+  if (!confirm('Drawing Number DB를 초기화할까요?')) return
+  await fetch('/api/db/drawing', { method: 'DELETE' })
+  loadDBStatus()
+  document.getElementById('drawing-upload-success').style.display = 'none'
+}
+
+// ── DB 상태 전체 갱신 ─────────────────────────────────────────────────────────
+async function loadDBStatus() {
+  try {
+    const res = await fetch('/api/db/status')
+    const data = await res.json()
+
+    // Plate DB 배지
+    const plateBadge = document.getElementById('plate-db-badge')
+    if (plateBadge) {
+      if (data.plate.loaded) {
+        plateBadge.className = 'ref-db-status ref-db-loaded'
+        plateBadge.innerHTML = `<i class="fas fa-circle" style="font-size:0.55rem"></i>&nbsp;${data.plate.fileCount}개 파일 / ${data.plate.count.toLocaleString()}개`
+      } else {
+        plateBadge.className = 'ref-db-status ref-db-empty'
+        plateBadge.innerHTML = `<i class="fas fa-circle" style="font-size:0.55rem"></i>&nbsp;미등록`
+      }
+    }
+
+    // Drawing DB 배지
+    const drawingBadge = document.getElementById('drawing-db-badge')
+    const drawingInfo = document.getElementById('drawing-db-info')
+    if (drawingBadge) {
+      if (data.drawing.loaded) {
+        drawingBadge.className = 'ref-db-status ref-db-loaded'
+        drawingBadge.innerHTML = `<i class="fas fa-circle" style="font-size:0.55rem"></i>&nbsp;${data.drawing.count.toLocaleString()}행`
+      } else {
+        drawingBadge.className = 'ref-db-status ref-db-empty'
+        drawingBadge.innerHTML = `<i class="fas fa-circle" style="font-size:0.55rem"></i>&nbsp;미등록`
+      }
+    }
+    if (drawingInfo) {
+      if (data.drawing.loaded) {
+        drawingInfo.innerHTML = `파일: <strong>${data.drawing.filename || '알 수 없음'}</strong> · 마지막 업데이트: ${data.drawing.updatedAt ? new Date(data.drawing.updatedAt).toLocaleString('ko-KR') : '—'}`
+      } else { drawingInfo.textContent = '' }
+    }
+
+    // 헤더 배지 업데이트
+    const headerBadge = document.getElementById('header-refdb-badge')
+    if (headerBadge) {
+      const hasAny = data.plate.loaded || data.drawing.loaded
+      if (hasAny) {
+        headerBadge.style.display = 'inline-flex'
+        const parts = []
+        if (data.plate.loaded) parts.push(`P:${data.plate.count}`)
+        if (data.drawing.loaded) parts.push(`D:${data.drawing.count}`)
+        headerBadge.innerHTML = `<i class="fas fa-database"></i>&nbsp;DB: ${parts.join(' / ')}`
+      } else {
+        headerBadge.style.display = 'none'
+      }
+    }
+
+    // Plate 파일 리스트도 함께 갱신
+    loadPlateFileList()
+  } catch(e) { console.error('[db status]', e) }
+}
+
+// ── 헤더 DB 배지 (설정 모달 외부에도 표시) ───────────────────────────────────
+function updateHeaderDBBadge(plateCount, drawingCount, plateLoaded, drawingLoaded) {
+  const headerBadge = document.getElementById('header-refdb-badge')
+  if (!headerBadge) return
+  const hasAny = plateLoaded || drawingLoaded
+  if (hasAny) {
+    headerBadge.style.display = 'inline-flex'
+    const parts = []
+    if (plateLoaded) parts.push(`P:${plateCount}`)
+    if (drawingLoaded) parts.push(`D:${drawingCount}`)
+    headerBadge.innerHTML = `<i class="fas fa-database"></i>&nbsp;DB: ${parts.join(' / ')}`
+  } else {
+    headerBadge.style.display = 'none'
+  }
+}
+</script>
+</body>
+</html>

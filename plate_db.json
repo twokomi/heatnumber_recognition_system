@@ -1,0 +1,25 @@
+{
+  "files": [
+    {
+      "fileId": "1776292546186_7ccsz",
+      "filename": "project_numeric.xlsx",
+      "uploadedAt": "2026-04-15T22:35:46.186Z",
+      "entries": [
+        {
+          "plateNo": "5606726-01-1-01",
+          "heatNo": "5606726",
+          "type": "numeric"
+        },
+        {
+          "plateNo": "5606727-02-1-03",
+          "heatNo": "5606727",
+          "type": "numeric"
+        }
+      ],
+      "alphaCount": 0,
+      "numericCount": 2,
+      "skipped": 0
+    }
+  ],
+  "updatedAt": "2026-04-15T22:35:56.308Z"
+}
