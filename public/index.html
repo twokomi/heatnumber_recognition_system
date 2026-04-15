@@ -177,6 +177,22 @@
       .tabs { padding: 0 16px; }
     }
 
+    /* ── Reference DB 인라인 매칭 (method-block 내부) ── */
+    .dbmatch-inline { margin-top: 10px; border-top: 1px solid var(--border); padding-top: 10px; }
+    .dbmatch-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 7px; }
+    .dbmatch-title-exact { font-size: 0.72rem; font-weight: 700; color: #3fb950; display: flex; align-items: center; gap: 5px; }
+    .dbmatch-title-fuzzy { font-size: 0.72rem; font-weight: 700; color: #d29922; display: flex; align-items: center; gap: 5px; }
+    .dbmatch-title-none  { font-size: 0.72rem; font-weight: 600; color: var(--text-secondary); display: flex; align-items: center; gap: 5px; }
+    .dbmatch-pct-exact { background: rgba(63,185,80,0.2); color: #3fb950; border: 1px solid rgba(63,185,80,0.4); padding: 1px 7px; border-radius: 3px; font-size: 0.68rem; font-weight: 700; }
+    .dbmatch-pct-fuzzy { background: rgba(210,153,34,0.2); color: #d29922; border: 1px solid rgba(210,153,34,0.4); padding: 1px 7px; border-radius: 3px; font-size: 0.68rem; font-weight: 700; }
+    .dbmatch-chips { display: flex; flex-wrap: wrap; gap: 5px; }
+    .dbmatch-chip { display: inline-flex; align-items: center; gap: 4px; padding: 3px 9px; border-radius: 4px; font-size: 0.72rem; font-family: monospace; font-weight: 600; }
+    .chip-plate  { background: rgba(63,185,80,0.12);  color: #3fb950; border: 1px solid rgba(63,185,80,0.3); }
+    .chip-heat   { background: rgba(88,166,255,0.12); color: #58a6ff; border: 1px solid rgba(88,166,255,0.3); }
+    .chip-drawing{ background: rgba(188,140,255,0.12); color: #bc8cff; border: 1px solid rgba(188,140,255,0.3); }
+    .chip-method { background: rgba(139,148,158,0.1); color: var(--text-secondary); border: 1px solid rgba(139,148,158,0.2); font-family: sans-serif; font-size: 0.65rem; font-weight: 400; }
+    .chip-nodata { background: rgba(139,148,158,0.08); color: var(--text-secondary); border: 1px solid rgba(139,148,158,0.15); }
+
     /* ── Reference DB 스타일 ── */
     .ref-badge-exact  { background: rgba(63,185,80,0.2);   color: #3fb950; border: 1px solid rgba(63,185,80,0.4);   padding: 2px 8px; border-radius: 3px; font-size: 0.7rem; font-weight: 700; }
     .ref-badge-fuzzy  { background: rgba(210,153,34,0.2);  color: #d29922; border: 1px solid rgba(210,153,34,0.4);  padding: 2px 8px; border-radius: 3px; font-size: 0.7rem; font-weight: 700; }
@@ -530,6 +546,8 @@
           </div>
           <div class="validation-row" id="modal-std-validation"></div>
           <div class="method-notes" id="modal-std-notes"></div>
+          <!-- DB 매칭 인라인 표시 -->
+          <div id="modal-std-dbmatch" style="display:none"></div>
           <div id="modal-std-error" class="error-box" style="display:none"></div>
         </div>
         <!-- Agentic -->
@@ -543,6 +561,8 @@
           </div>
           <div class="validation-row" id="modal-agn-validation"></div>
           <div class="method-notes" id="modal-agn-notes"></div>
+          <!-- DB 매칭 인라인 표시 -->
+          <div id="modal-agn-dbmatch" style="display:none"></div>
           <div id="modal-agn-error" class="error-box" style="display:none"></div>
           <button class="agentic-btn" id="agentic-run-btn" onclick="runAgentic()" style="margin-top:12px">
             <i class="fas fa-magic"></i> Agentic Vision 실행 (고정밀)
@@ -567,6 +587,86 @@ let apiBtnBorderColor = 'var(--border)'
 let apiBtnColor = 'var(--text-secondary)'
 
 document.getElementById('gen-time').textContent = 'Generated ' + new Date().toLocaleString('ko-KR')
+
+// ── DB 매칭 인라인 렌더 헬퍼 ─────────────────────────────────────────────────
+/**
+ * OCR 결과의 refMatch를 method-block 내부 dbmatch 영역에 렌더링
+ * @param {string} elId  - 'modal-std-dbmatch' | 'modal-agn-dbmatch'
+ * @param {object|null} refM - result.refMatch
+ * @param {boolean} hasDB - DB가 하나라도 로드되어 있는지 여부
+ */
+function renderDBMatchInline(elId, refM, hasDB) {
+  const el = document.getElementById(elId)
+  if (!el) return
+
+  // DB 자체가 없으면 숨김
+  if (!hasDB) { el.style.display = 'none'; return }
+
+  el.style.display = 'block'
+
+  if (!refM) {
+    // OCR 완료 전 (결과 없음)
+    el.innerHTML = `<div class="dbmatch-inline">
+      <div class="dbmatch-header">
+        <span class="dbmatch-title-none"><i class="fas fa-database"></i>DB 매칭 대기</span>
+      </div>
+    </div>`
+    return
+  }
+
+  if (!refM.matched) {
+    // DB에 없음
+    el.innerHTML = `<div class="dbmatch-inline">
+      <div class="dbmatch-header">
+        <span class="dbmatch-title-none"><i class="fas fa-times-circle"></i>DB 매칭 없음</span>
+      </div>
+      <div class="dbmatch-chips">
+        <span class="dbmatch-chip chip-nodata"><i class="fas fa-search" style="font-size:0.6rem"></i> 등록된 항목 없음</span>
+      </div>
+    </div>`
+    return
+  }
+
+  const isExact = refM.confidence >= 0.9
+  const plate = refM.plate
+  const drawing = refM.drawing
+  const pct = Math.round(refM.confidence * 100)
+
+  // 매칭 방식 레이블
+  const methodLabel = {
+    plate_exact: '완전일치',
+    heat_exact: 'Heat일치',
+    plate_fuzzy: '근사일치',
+    drawing_exact: '완전일치',
+    drawing_base_match: '기본번호일치',
+    drawing_fuzzy: '근사일치'
+  }
+
+  let chips = ''
+  if (plate) {
+    chips += `<span class="dbmatch-chip chip-plate" title="Plate Number"><i class="fas fa-tag" style="font-size:0.6rem"></i>${plate.plateNo}</span>`
+    chips += `<span class="dbmatch-chip chip-heat" title="Heat Number"><i class="fas fa-fire" style="font-size:0.6rem"></i>${plate.heatNo}</span>`
+    chips += `<span class="dbmatch-chip chip-method">${methodLabel[plate.matchMethod] || plate.matchMethod}</span>`
+  }
+  if (drawing) {
+    chips += `<span class="dbmatch-chip chip-drawing" title="Drawing Number"><i class="fas fa-drafting-compass" style="font-size:0.6rem"></i>${drawing.drawingFull}</span>`
+    if (!plate) chips += `<span class="dbmatch-chip chip-method">${methodLabel[drawing.matchMethod] || drawing.matchMethod}</span>`
+  }
+  if (!plate && !drawing) {
+    chips += `<span class="dbmatch-chip chip-nodata">매칭 정보 없음</span>`
+  }
+
+  el.innerHTML = `<div class="dbmatch-inline">
+    <div class="dbmatch-header">
+      <span class="${isExact ? 'dbmatch-title-exact' : 'dbmatch-title-fuzzy'}">
+        <i class="fas fa-${isExact ? 'check-circle' : 'exclamation-circle'}"></i>
+        DB ${isExact ? '확정 매칭' : '근사 매칭'}
+      </span>
+      <span class="${isExact ? 'dbmatch-pct-exact' : 'dbmatch-pct-fuzzy'}">${pct}%</span>
+    </div>
+    <div class="dbmatch-chips">${chips}</div>
+  </div>`
+}
 
 // ── 탭 ──────────────────────────────────────────────────────────────────────
 function switchTab(tab) {
@@ -833,9 +933,12 @@ function populateModal(idx) {
   // Standard 결과
   const std=img.standardResult
   const stdErr=document.getElementById('modal-std-error')
+  // DB 로드 여부 (plate 또는 drawing 중 하나라도 있으면 true)
+  const hasDB = window._dbLoaded || false
   if(std?.error) {
     stdErr.textContent='오류: '+std.error; stdErr.style.display='block'
     document.getElementById('modal-std-elapsed').textContent=''
+    renderDBMatchInline('modal-std-dbmatch', null, hasDB)
   } else if(std) {
     stdErr.style.display='none'
     document.getElementById('modal-std-elapsed').textContent=std.elapsed||''
@@ -843,6 +946,9 @@ function populateModal(idx) {
     const sv=std.validation
     document.getElementById('modal-std-validation').innerHTML=sv?[{k:'heat',l:'Heat#'},{k:'material',l:'Material'},{k:'drawing',l:'Drawing#'}].map(({k,l})=>`<span class="val-badge ${sv[k]?'val-ok':'val-fail'}">${l}: ${sv[k]?'✓':'✗'}</span>`).join(''):''
     document.getElementById('modal-std-notes').textContent=std.notes||''
+    renderDBMatchInline('modal-std-dbmatch', std.refMatch, hasDB)
+  } else {
+    renderDBMatchInline('modal-std-dbmatch', null, hasDB)
   }
 
   // Agentic 결과
@@ -856,6 +962,7 @@ function populateModal(idx) {
     const av=agn.validation
     document.getElementById('modal-agn-validation').innerHTML=av?[{k:'heat',l:'Heat#'},{k:'material',l:'Material'},{k:'drawing',l:'Drawing#'}].map(({k,l})=>`<span class="val-badge ${av[k]?'val-ok':'val-fail'}">${l}: ${av[k]?'✓':'✗'}</span>`).join(''):''
     document.getElementById('modal-agn-notes').textContent=agn.notes||''
+    renderDBMatchInline('modal-agn-dbmatch', agn.refMatch, hasDB)
     btn.innerHTML='<i class="fas fa-magic"></i> Agentic Vision 재실행'; btn.disabled=false
   } else if(!agn) {
     agnErr.style.display='none'
@@ -863,6 +970,7 @@ function populateModal(idx) {
     document.getElementById('modal-agn-validation').innerHTML=''
     document.getElementById('modal-agn-notes').textContent=''
     document.getElementById('modal-agn-elapsed').textContent='—'
+    renderDBMatchInline('modal-agn-dbmatch', null, hasDB)
     btn.innerHTML='<i class="fas fa-magic"></i> Agentic Vision 실행 (고정밀)'; btn.disabled=false
   }
 }
@@ -1267,6 +1375,8 @@ async function loadDBStatus() {
 
     // Plate 파일 리스트도 함께 갱신
     loadPlateFileList()
+    // DB 로드 상태 전역 플래그 (모달에서 사용)
+    window._dbLoaded = data.plate.loaded || data.drawing.loaded
   } catch(e) { console.error('[db status]', e) }
 }
 
