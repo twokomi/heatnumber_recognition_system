@@ -627,7 +627,7 @@ function renderDBMatchInline(elId, refM, hasDB) {
     return
   }
 
-  const isExact = refM.confidence >= 0.9
+  const isExact = refM.confidence >= 0.99
   const plate = refM.plate
   const drawing = refM.drawing
   const pct = Math.round(refM.confidence * 100)
@@ -898,7 +898,7 @@ function populateModal(idx) {
   const refBlockEl = document.getElementById('modal-ref-block')
   const refM = r?.refMatch
   if (refM && refM.matched) {
-    const isExact = refM.confidence >= 0.9
+    const isExact = refM.confidence >= 0.99
     const plate = refM.plate
     const drawing = refM.drawing
     refBlockEl.style.display = 'block'

@@ -350,14 +350,14 @@ function matchWithDBs(ocrLine1, ocrLine3) {
     // 전략 1: plateNo 완전 매칭
     let found = allPlateEntries.find(e => e.plateNo === ocr1)
     if (found) {
-      result.plateMatch = { matched: true, entry: found, confidence: 0.99, method: 'plate_exact' }
+      result.plateMatch = { matched: true, entry: found, confidence: 1.0, method: 'plate_exact' }
     } else {
       // 전략 2: heatNo 완전 매칭
       const ocrHeat = extractHeatNumber(ocrLine1)?.toUpperCase()
       if (ocrHeat) {
         const byHeat = allPlateEntries.filter(e => e.heatNo === ocrHeat)
         if (byHeat.length > 0) {
-          result.plateMatch = { matched: true, entry: byHeat[0], allByHeat: byHeat, confidence: 0.95, method: 'heat_exact' }
+          result.plateMatch = { matched: true, entry: byHeat[0], allByHeat: byHeat, confidence: 0.95, method: 'heat_exact' }  // Heat만 일치
         }
       }
 
@@ -387,7 +387,7 @@ function matchWithDBs(ocrLine1, ocrLine3) {
     // 전략 1: drawingFull 완전 매칭
     const found = drawingDB.entries.find(e => e.drawingFull === ocr3)
     if (found) {
-      result.drawingMatch = { matched: true, entry: found, confidence: 0.99, method: 'drawing_exact' }
+      result.drawingMatch = { matched: true, entry: found, confidence: 1.0, method: 'drawing_exact' }
     } else {
       // 전략 2: drawingBase만 매칭
       const m = ocr3.match(/^(\d{8})-([BLMUWT])(\d{2})$/)
@@ -395,7 +395,7 @@ function matchWithDBs(ocrLine1, ocrLine3) {
         const [, base, code, skirt] = m
         const byBase = drawingDB.entries.find(e => e.drawingBase === base && e.sectionCode === code)
         if (byBase) {
-          result.drawingMatch = { matched: true, entry: byBase, confidence: 0.95, method: 'drawing_base_match' }
+          result.drawingMatch = { matched: true, entry: byBase, confidence: 0.95, method: 'drawing_base_match' }  // 기본번호 일치
         }
       }
 
@@ -414,6 +414,10 @@ function matchWithDBs(ocrLine1, ocrLine3) {
   }
 
   // ─── 통합 신뢰도 계산 ─────────────────────────────────────────────────────
+  // combined.confidence = "DB 매칭 자체의 신뢰도"
+  // 각 DB가 독립적으로 매칭되므로, 매칭된 것들의 신뢰도를 그대로 반영
+  // plate_exact / drawing_exact = 1.0 (DB에 정확히 존재)
+  // 한쪽만 매칭되어도 해당 신뢰도를 그대로 사용 (× 0.85 패널티 제거)
   if (result.plateMatch?.matched && result.drawingMatch?.matched) {
     result.combined = {
       matched: true,
@@ -421,9 +425,9 @@ function matchWithDBs(ocrLine1, ocrLine3) {
       method: `${result.plateMatch.method}+${result.drawingMatch.method}`
     }
   } else if (result.plateMatch?.matched) {
-    result.combined = { matched: true, confidence: result.plateMatch.confidence * 0.85, method: result.plateMatch.method }
+    result.combined = { matched: true, confidence: result.plateMatch.confidence, method: result.plateMatch.method }
   } else if (result.drawingMatch?.matched) {
-    result.combined = { matched: true, confidence: result.drawingMatch.confidence * 0.85, method: result.drawingMatch.method }
+    result.combined = { matched: true, confidence: result.drawingMatch.confidence, method: result.drawingMatch.method }
   }
 
   return result
