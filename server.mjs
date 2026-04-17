@@ -763,19 +763,59 @@ function buildResult(parsed, method, elapsed, dbMatch = null) {
 
   const pv2 = validatePlateNumber(finalLine1)
   const dv2 = validateDrawingNumber(finalLine3)
-  const score = [pv2.valid, mv.valid, dv2.valid].filter(Boolean).length / 3
+  const validCount = [pv2.valid, mv.valid, dv2.valid].filter(Boolean).length
 
-  const baseConf = parsed.confidence || 0.5
-  const refBoost = dbMatch?.combined?.matched ? dbMatch.combined.confidence * 0.3 : 0
-  const conf = Math.round(Math.min(0.99, baseConf * 0.5 + score * 0.2 + refBoost) * 100) / 100
+  // ─── OCR 판독 품질 (GPT confidence 제거 — 포맷 검증 기반) ───────────────
+  // 문자 구조(개수/하이픈 위치)를 포맷 정규식으로 검증
+  // good: 3개 모두 OK, partial: 1~2개 OK, poor: 모두 실패
+  const ocrQuality = validCount === 3 ? 'good' : validCount >= 1 ? 'partial' : 'poor'
+
+  // ─── Status 분류 (핵심 지표) ──────────────────────────────────────────────
+  // AUTO_OK : 포맷 OK + 로드된 모든 DB에서 완전일치(100%) → 자동처리 가능
+  // REVIEW  : 포맷 OK + DB 근사매칭 or 로드된 DB 일부만 매칭 → 사람이 확인 필요
+  // MANUAL  : 포맷 OK + DB 없음 or DB에 없음 → 사람이 수동 입력
+  // OCR_FAIL: 포맷 2개 이상 실패         → Agentic 재시도 or 수동
+  let status
+  // 실제 DB 로드 여부 = 파일 수 or entries 수로 판단 (matchWithDBs는 항상 객체 반환)
+  const plateLoaded = getAllPlateEntries().length > 0
+  const drawingLoaded = drawingDB.entries.length > 0
+  const anyDBLoaded = plateLoaded || drawingLoaded
+
+  if (validCount <= 1) {
+    status = 'OCR_FAIL'
+  } else if (!anyDBLoaded) {
+    // DB 자체가 없음 → 포맷만 검증됨, DB 확인 불가 → MANUAL
+    status = 'MANUAL'
+  } else if (!dbMatch?.combined?.matched) {
+    // DB는 있지만 매칭 실패 → 수동 입력 필요
+    status = 'MANUAL'
+  } else {
+    // DB 매칭 있음
+    const plateExact = !plateLoaded || (dbMatch.plateMatch?.matched && dbMatch.plateMatch.confidence >= 1.0)
+    const drawingExact = !drawingLoaded || (dbMatch.drawingMatch?.matched && dbMatch.drawingMatch.confidence >= 1.0)
+    if (plateExact && drawingExact) {
+      status = 'AUTO_OK'  // 로드된 모든 DB에서 완전일치
+    } else if (dbMatch.combined.confidence >= 1.0) {
+      status = 'AUTO_OK'  // combined이 완전일치면 AUTO_OK
+    } else {
+      status = 'REVIEW'   // 근사 매칭이거나 일부만 매칭
+    }
+  }
+
+  // ─── OCR 판독 품질 점수 (0~1, 포맷 기반) ─────────────────────────────────
+  // 카드 Difficulty 대신 실질적인 판독 신뢰도로 사용
+  const ocrScore = validCount / 3
 
   return {
     method, elapsed,
     line1: finalLine1,
     line2: mv.corrected || parsed.line2 || '',
     line3: finalLine3,
-    confidence: conf,
-    difficulty: calcDifficulty(conf),
+    status,                          // 'AUTO_OK' | 'REVIEW' | 'MANUAL' | 'OCR_FAIL'
+    ocrQuality,                      // 'good' | 'partial' | 'poor'
+    ocrScore,                        // 0 | 0.33 | 0.67 | 1.0
+    confidence: ocrScore,            // 하위호환 (기존 코드 참조용, 의미는 ocrScore와 동일)
+    difficulty: validCount === 3 ? 1 : validCount === 2 ? 4 : validCount === 1 ? 7 : 10,
     validation: { heat: pv2.valid, material: mv.valid, drawing: dv2.valid },
     notes: parsed.notes || '',
     refMatch: refInfo

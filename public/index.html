@@ -177,6 +177,28 @@
       .tabs { padding: 0 16px; }
     }
 
+    /* ── Status 배지 ── */
+    .badge-auto-ok  { background: rgba(63,185,80,0.2);   color: #3fb950; border: 1px solid rgba(63,185,80,0.5);   font-weight: 700; }
+    .badge-review   { background: rgba(210,153,34,0.2);  color: #d29922; border: 1px solid rgba(210,153,34,0.5);  font-weight: 700; }
+    .badge-manual   { background: rgba(248,81,73,0.2);   color: #f85149; border: 1px solid rgba(248,81,73,0.5);   font-weight: 700; }
+    .badge-ocr-fail { background: rgba(139,148,158,0.2); color: #8b949e; border: 1px solid rgba(139,148,158,0.4); font-weight: 700; }
+
+    /* ── OCR 품질 배지 ── */
+    .badge-ocr-good    { background: rgba(88,166,255,0.15); color: #58a6ff; border: 1px solid rgba(88,166,255,0.3); }
+    .badge-ocr-partial { background: rgba(210,153,34,0.15); color: #d29922; border: 1px solid rgba(210,153,34,0.3); }
+    .badge-ocr-poor    { background: rgba(248,81,73,0.15);  color: #f85149; border: 1px solid rgba(248,81,73,0.3); }
+
+    /* ── Status Bar ── */
+    .status-bar-wrap { display: flex; height: 28px; border-radius: 6px; overflow: hidden; gap: 2px; }
+    .status-bar-seg { display: flex; align-items: center; justify-content: center; font-size: 0.7rem; font-weight: 600; color: white; transition: all 0.3s; min-width: 0; overflow: hidden; white-space: nowrap; }
+    .seg-auto  { background: #238636; }
+    .seg-review{ background: #d29922; }
+    .seg-manual{ background: #f85149; }
+    .seg-fail  { background: #484f58; }
+
+    /* ── 통계카드 stat-red ── */
+    .stat-red { color: var(--red); }
+
     /* ── Reference DB 인라인 매칭 (method-block 내부) ── */
     .dbmatch-inline { margin-top: 10px; border-top: 1px solid var(--border); padding-top: 10px; }
     .dbmatch-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 7px; }
@@ -459,10 +481,10 @@
 <div class="main">
   <!-- 통계 카드 -->
   <div class="stats-grid">
-    <div class="stat-card"><div class="stat-value stat-blue" id="stat-total">0</div><div class="stat-label">Total Images</div></div>
-    <div class="stat-card"><div class="stat-value stat-purple" id="stat-agentic">0</div><div class="stat-label">Used Agentic</div></div>
-    <div class="stat-card"><div class="stat-value stat-green" id="stat-high-conf">0</div><div class="stat-label">High Confidence</div></div>
-    <div class="stat-card"><div class="stat-value stat-yellow" id="stat-avg-diff">—</div><div class="stat-label">Avg Difficulty /10</div></div>
+    <div class="stat-card"><div class="stat-value stat-green" id="stat-auto-ok">0</div><div class="stat-label">🟢 AUTO OK</div></div>
+    <div class="stat-card"><div class="stat-value stat-yellow" id="stat-review">0</div><div class="stat-label">🟡 REVIEW</div></div>
+    <div class="stat-card"><div class="stat-value stat-red" id="stat-manual">0</div><div class="stat-label">🔴 MANUAL</div></div>
+    <div class="stat-card"><div class="stat-value" style="color:var(--text-secondary)" id="stat-ocr-fail">0</div><div class="stat-label">⚫ OCR FAIL</div></div>
   </div>
 
   <!-- 업로드 -->
@@ -477,27 +499,28 @@
     </div>
   </div>
 
-  <!-- 난이도 분포 -->
+  <!-- 처리 상태 분포 -->
   <div class="difficulty-section">
-    <h2>Difficulty Distribution</h2>
-    <div class="difficulty-bar-wrap" id="diff-bar">
-      <div class="diff-bar easy" style="flex:1">No data</div>
+    <h2>처리 현황</h2>
+    <div class="status-bar-wrap" id="status-bar">
+      <div class="status-bar-seg seg-fail" style="flex:1">No data</div>
     </div>
-    <div class="diff-label">
-      <span><span class="dot" style="background:#238636"></span>Easy (1-3)</span>
-      <span><span class="dot" style="background:#d29922"></span>Medium (4-6)</span>
-      <span><span class="dot" style="background:#f85149"></span>Hard (7+)</span>
+    <div class="diff-label" style="margin-top:8px">
+      <span><span class="dot" style="background:#238636"></span>AUTO OK — 자동처리</span>
+      <span><span class="dot" style="background:#d29922"></span>REVIEW — 확인 필요</span>
+      <span><span class="dot" style="background:#f85149"></span>MANUAL — 수동 입력</span>
+      <span><span class="dot" style="background:#484f58"></span>OCR FAIL — 재시도</span>
     </div>
   </div>
 
   <!-- 이미지 그리드 -->
   <div>
     <div class="grid-header">
-      <h2>All Images</h2>
+      <h2>All Images <span id="grid-total-count" style="font-size:0.78rem;color:var(--text-secondary);font-weight:400"></span></h2>
       <div style="display:flex;gap:6px;align-items:center">
         <div class="sort-btns">
-          <button class="sort-btn active" id="sort-hardest" onclick="sortImages('hardest')"><i class="fas fa-arrow-down"></i> Hardest first</button>
-          <button class="sort-btn" id="sort-easiest" onclick="sortImages('easiest')"><i class="fas fa-arrow-up"></i> Easiest first</button>
+          <button class="sort-btn active" id="sort-status" onclick="sortImages('status')"><i class="fas fa-exclamation-circle"></i> 중요순</button>
+          <button class="sort-btn" id="sort-name" onclick="sortImages('name')"><i class="fas fa-sort-alpha-down"></i> 이름순</button>
         </div>
         <button class="export-btn" id="csv-export-btn" onclick="exportCSV()" style="display:none">
           <i class="fas fa-file-csv"></i> CSV
@@ -580,13 +603,39 @@
 
 <script>
 let images = []
-let sortMode = 'hardest'
+let sortMode = 'status'
 let currentModalIdx = -1
 let persistEnabled = false
 let apiBtnBorderColor = 'var(--border)'
 let apiBtnColor = 'var(--text-secondary)'
 
 document.getElementById('gen-time').textContent = 'Generated ' + new Date().toLocaleString('ko-KR')
+
+// ── Status 헬퍼 ──────────────────────────────────────────────────────────────
+const STATUS_CONFIG = {
+  AUTO_OK:  { label: '🟢 AUTO OK',  badgeClass: 'badge-auto-ok',  sortOrder: 3, icon: 'fa-check-circle',    color: '#3fb950' },
+  REVIEW:   { label: '🟡 REVIEW',   badgeClass: 'badge-review',   sortOrder: 1, icon: 'fa-exclamation-circle', color: '#d29922' },
+  MANUAL:   { label: '🔴 MANUAL',   badgeClass: 'badge-manual',   sortOrder: 0, icon: 'fa-times-circle',    color: '#f85149' },
+  OCR_FAIL: { label: '⚫ OCR FAIL', badgeClass: 'badge-ocr-fail', sortOrder: 2, icon: 'fa-question-circle', color: '#8b949e' }
+}
+
+function getStatus(img) {
+  const r = img.agenticResult || img.standardResult
+  return r?.status || 'OCR_FAIL'
+}
+
+function getResult(img) { return img.agenticResult || img.standardResult }
+
+function statusBadgeHTML(status) {
+  const cfg = STATUS_CONFIG[status] || STATUS_CONFIG.OCR_FAIL
+  return `<span class="badge ${cfg.badgeClass}"><i class="fas ${cfg.icon}" style="margin-right:3px"></i>${cfg.label}</span>`
+}
+
+function ocrQualityBadgeHTML(quality) {
+  if (quality === 'good')    return `<span class="badge badge-ocr-good"><i class="fas fa-check" style="margin-right:3px"></i>OCR 양호</span>`
+  if (quality === 'partial') return `<span class="badge badge-ocr-partial"><i class="fas fa-minus" style="margin-right:3px"></i>OCR 부분</span>`
+  return `<span class="badge badge-ocr-poor"><i class="fas fa-times" style="margin-right:3px"></i>OCR 불량</span>`
+}
 
 // ── DB 매칭 인라인 렌더 헬퍼 ─────────────────────────────────────────────────
 /**
@@ -768,26 +817,47 @@ async function runAgentic() {
 function exportCSV() {
   const done = images.filter(i => i.status === 'done')
   if (!done.length) return alert('내보낼 결과가 없습니다.')
-  const rows = [['Filename','Method','Heat Number','Material','Drawing Number','Confidence','Difficulty','Heat Valid','Material Valid','Drawing Valid','Notes']]
+  const headers = [
+    'Filename', 'Status', 'OCR Quality', 'Method',
+    'Heat Number (Line1)', 'Material (Line2)', 'Drawing Number (Line3)',
+    'Heat Valid', 'Material Valid', 'Drawing Valid',
+    'DB Plate No', 'DB Heat No', 'DB Plate Match', 'DB Plate Confidence',
+    'DB Drawing Full', 'DB Drawing Match', 'DB Drawing Confidence',
+    'DB Combined Confidence', 'Notes'
+  ]
+  const rows = [headers]
   done.forEach(img => {
     const r = img.agenticResult || img.standardResult
     if (!r) return
     const v = r.validation || {}
+    const ref = r.refMatch
+    const plate = ref?.plate
+    const drawing = ref?.drawing
+    const statusLabel = r.status || 'OCR_FAIL'
+    const qualityLabel = r.ocrQuality || ''
     rows.push([
       img.filename,
+      statusLabel,
+      qualityLabel,
       r.method || '',
       r.line1 || '',
       r.line2 || '',
       r.line3 || '',
-      r.confidence || '',
-      r.difficulty || '',
       v.heat ? 'OK' : 'FAIL',
       v.material ? 'OK' : 'FAIL',
       v.drawing ? 'OK' : 'FAIL',
+      plate?.plateNo || '',
+      plate?.heatNo || '',
+      plate?.matchMethod || (ref?.matched ? '' : 'NO_MATCH'),
+      plate ? Math.round((plate.confidence || 0) * 100) + '%' : '',
+      drawing?.drawingFull || '',
+      drawing?.matchMethod || (ref?.matched ? '' : 'NO_MATCH'),
+      drawing ? Math.round((drawing.confidence || 0) * 100) + '%' : '',
+      ref?.matched ? Math.round((ref.confidence || 0) * 100) + '%' : 'NO_MATCH',
       (r.notes || '').replace(/,/g, ';')
     ])
   })
-  const csv = rows.map(r => r.map(c => `"${c}"`).join(',')).join('\n')
+  const csv = rows.map(r => r.map(c => `"${String(c).replace(/"/g, '""')}"`).join(',')).join('\n')
   const blob = new Blob(['\uFEFF' + csv], { type: 'text/csv;charset=utf-8;' })
   const url = URL.createObjectURL(blob)
   const a = document.createElement('a')
@@ -808,7 +878,17 @@ function renderGrid() {
     grid.innerHTML = '<div class="empty-state"><i class="fas fa-image"></i><p>Upload 탭에서 이미지를 업로드하면 결과가 여기에 표시됩니다</p></div>'
     return
   }
-  const sorted = [...images].sort((a,b) => sortMode==='hardest' ? getDiff(b)-getDiff(a) : getDiff(a)-getDiff(b))
+
+  // 정렬: status 우선순위 (MANUAL→REVIEW→OCR_FAIL→AUTO_OK), 이름순
+  const sorted = [...images].sort((a, b) => {
+    if (sortMode === 'status') {
+      const sa = STATUS_CONFIG[getStatus(a)]?.sortOrder ?? 2
+      const sb = STATUS_CONFIG[getStatus(b)]?.sortOrder ?? 2
+      if (sa !== sb) return sa - sb
+    }
+    return a.filename.localeCompare(b.filename)
+  })
+
   grid.innerHTML = sorted.map(img => {
     const origIdx = images.indexOf(img)
     if (img.status === 'processing') {
@@ -820,9 +900,22 @@ function renderGrid() {
         </div>
       </div>`
     }
-    const r = getResult(img); const d = getDiff(img); const c = r?.confidence||0
+    const r = getResult(img)
+    const status = getStatus(img)
+    const cfg = STATUS_CONFIG[status] || STATUS_CONFIG.OCR_FAIL
     const hasError = img.status === 'error'
-    return `<div class="image-card" onclick="openModal(${origIdx})">
+
+    // DB 매칭 미니 표시
+    const refM = r?.refMatch
+    let dbChip = ''
+    if (refM?.matched) {
+      const isExact = refM.confidence >= 1.0
+      dbChip = `<span class="badge ${isExact ? 'badge-auto-ok' : 'badge-review'}" style="font-size:0.62rem">DB ${isExact ? '100%' : Math.round(refM.confidence*100)+'%'}</span>`
+    } else if (refM) {
+      dbChip = `<span class="badge badge-ocr-fail" style="font-size:0.62rem">DB없음</span>`
+    }
+
+    return `<div class="image-card" onclick="openModal(${origIdx})" style="border-left:3px solid ${hasError ? '#484f58' : cfg.color}">
       <img class="image-thumb" src="${img.dataUrl}" alt="">
       <div style="flex:1;min-width:0">
         <div class="card-filename">${img.filename}</div>
@@ -831,40 +924,52 @@ function renderGrid() {
         </div>
       </div>
       <div class="card-badges">
-        <span class="badge ${hasError?'badge-error':diffClass(d)}">${hasError?'Error':'Difficulty '+d+'/10'}</span>
-        ${!hasError?`<span class="badge ${confClass(c)}">Confidence: ${confLabel(c)}</span>`:''}
-        ${img.agenticResult?'<span class="badge badge-agentic">Agentic Vision</span>':''}
+        ${hasError
+          ? `<span class="badge badge-error">Error</span>`
+          : `<span class="badge ${cfg.badgeClass}"><i class="fas ${cfg.icon}" style="margin-right:3px;font-size:0.6rem"></i>${cfg.label}</span>`
+        }
+        ${dbChip}
+        ${r?.ocrQuality === 'partial' ? '<span class="badge badge-ocr-partial" style="font-size:0.62rem">OCR 부분</span>' : ''}
+        ${r?.ocrQuality === 'poor' ? '<span class="badge badge-ocr-poor" style="font-size:0.62rem">OCR 불량</span>' : ''}
+        ${img.agenticResult ? '<span class="badge badge-agentic" style="font-size:0.62rem">Agentic</span>' : ''}
       </div>
     </div>`
   }).join('')
-  updateDiffBar()
+
+  updateStatusBar()
+  document.getElementById('grid-total-count').textContent = `(${images.length}개)`
 }
 
-function updateDiffBar() {
-  const done = images.filter(i=>i.status==='done')
+function updateStatusBar() {
+  const done = images.filter(i => i.status === 'done')
   if (!done.length) return
-  const e=done.filter(i=>getDiff(i)<=3).length, m=done.filter(i=>getDiff(i)>=4&&getDiff(i)<=6).length, h=done.filter(i=>getDiff(i)>=7).length
-  document.getElementById('diff-bar').innerHTML =
-    (e>0?`<div class="diff-bar easy" style="flex:${e}">${e} Easy (1-3)</div>`:'')+
-    (m>0?`<div class="diff-bar medium" style="flex:${m}">${m} Medium (4-6)</div>`:'')+
-    (h>0?`<div class="diff-bar hard" style="flex:${h}">${h} Hard (7+)</div>`:'')
+  const counts = { AUTO_OK: 0, REVIEW: 0, MANUAL: 0, OCR_FAIL: 0 }
+  done.forEach(img => { const s = getStatus(img); if (counts[s] !== undefined) counts[s]++ })
+  const total = done.length
+  const bar = document.getElementById('status-bar')
+  if (!bar) return
+  bar.innerHTML = [
+    counts.AUTO_OK  > 0 ? `<div class="status-bar-seg seg-auto"   style="flex:${counts.AUTO_OK}">${counts.AUTO_OK} AUTO OK</div>` : '',
+    counts.REVIEW   > 0 ? `<div class="status-bar-seg seg-review" style="flex:${counts.REVIEW}">${counts.REVIEW} REVIEW</div>` : '',
+    counts.MANUAL   > 0 ? `<div class="status-bar-seg seg-manual" style="flex:${counts.MANUAL}">${counts.MANUAL} MANUAL</div>` : '',
+    counts.OCR_FAIL > 0 ? `<div class="status-bar-seg seg-fail"   style="flex:${counts.OCR_FAIL}">${counts.OCR_FAIL} OCR FAIL</div>` : '',
+  ].join('')
 }
 
 function updateStats() {
-  const done=images.filter(i=>i.status==='done')
-  const agn=images.filter(i=>!!i.agenticResult).length
-  const hc=done.filter(i=>(getResult(i)?.confidence||0)>=0.7).length
-  const avg=done.length?(done.reduce((s,i)=>s+getDiff(i),0)/done.length).toFixed(1):'—'
-  document.getElementById('stat-total').textContent=images.length
-  document.getElementById('stat-agentic').textContent=agn+(agn>0?` (${agn}/${images.length})`:'')
-  document.getElementById('stat-high-conf').textContent=hc
-  document.getElementById('stat-avg-diff').textContent=avg
+  const done = images.filter(i => i.status === 'done')
+  const counts = { AUTO_OK: 0, REVIEW: 0, MANUAL: 0, OCR_FAIL: 0 }
+  done.forEach(img => { const s = getStatus(img); if (counts[s] !== undefined) counts[s]++ })
+  document.getElementById('stat-auto-ok').textContent  = counts.AUTO_OK
+  document.getElementById('stat-review').textContent   = counts.REVIEW
+  document.getElementById('stat-manual').textContent   = counts.MANUAL
+  document.getElementById('stat-ocr-fail').textContent = counts.OCR_FAIL
 }
 
 function sortImages(mode) {
-  sortMode=mode
-  document.getElementById('sort-hardest').classList.toggle('active',mode==='hardest')
-  document.getElementById('sort-easiest').classList.toggle('active',mode==='easiest')
+  sortMode = mode
+  document.getElementById('sort-status').classList.toggle('active', mode === 'status')
+  document.getElementById('sort-name').classList.toggle('active', mode === 'name')
   renderGrid()
 }
 
@@ -882,11 +987,19 @@ function populateModal(idx) {
   document.getElementById('nav-next').disabled = idx===images.length-1
   document.getElementById('nav-position').textContent = `${idx+1} / ${images.length}`
 
-  const r=getResult(img); const d=getDiff(img); const c=r?.confidence||0
-  document.getElementById('modal-badges').innerHTML =
-    `<span class="badge ${diffClass(d)}">Difficulty ${d}/10</span>
-     <span class="badge ${confClass(c)}">Confidence: ${confLabel(c)}</span>
-     ${img.agenticResult?'<span class="badge badge-agentic">Agentic Vision</span>':''}`
+  const r=getResult(img)
+  const status = r?.status || (img.status === 'processing' ? null : 'OCR_FAIL')
+  const quality = r?.ocrQuality || null
+  let badgesHTML = ''
+  if (status) {
+    const cfg = STATUS_CONFIG[status] || STATUS_CONFIG.OCR_FAIL
+    badgesHTML += `<span class="badge ${cfg.badgeClass}"><i class="fas ${cfg.icon}" style="margin-right:3px"></i>${cfg.label}</span>`
+  }
+  if (quality) {
+    badgesHTML += ocrQualityBadgeHTML(quality)
+  }
+  if (img.agenticResult) badgesHTML += '<span class="badge badge-agentic">Agentic Vision</span>'
+  document.getElementById('modal-badges').innerHTML = badgesHTML
 
   ;[1,2,3].forEach(n=>{
     document.getElementById('modal-final-'+n).textContent = r?.['line'+n]||'—'
