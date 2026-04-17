@@ -1,0 +1,435 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="theme-color" content="#0d1117">
+  <title>Heat No. OCR</title>
+  <style>
+    :root {
+      --bg: #0d1117;
+      --card: #161b22;
+      --border: #30363d;
+      --text: #e6edf3;
+      --sub: #8b949e;
+      --green: #3fb950;
+      --yellow: #d29922;
+      --red: #f85149;
+      --blue: #58a6ff;
+      --purple: #bc8cff;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
+    html, body { height: 100%; background: var(--bg); color: var(--text); font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; overflow-x: hidden; }
+
+    /* ── 헤더 ── */
+    .top-bar {
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 14px 16px 10px;
+      border-bottom: 1px solid var(--border);
+      background: var(--card);
+      position: sticky; top: 0; z-index: 100;
+    }
+    .top-bar h1 { font-size: 1rem; font-weight: 700; }
+    .top-bar .sub { font-size: 0.7rem; color: var(--sub); margin-top: 2px; }
+    .top-bar a { font-size: 0.72rem; color: var(--blue); text-decoration: none; white-space: nowrap; }
+
+    /* ── 메인 ── */
+    .page { padding: 16px; display: flex; flex-direction: column; gap: 14px; }
+
+    /* ── 카메라 버튼 ── */
+    .camera-section { display: flex; flex-direction: column; gap: 10px; }
+    .camera-btn {
+      display: flex; align-items: center; justify-content: center; gap: 10px;
+      background: var(--blue); color: #000;
+      border: none; border-radius: 14px;
+      padding: 18px; font-size: 1.1rem; font-weight: 700;
+      cursor: pointer; width: 100%;
+      transition: opacity 0.15s;
+    }
+    .camera-btn:active { opacity: 0.75; }
+    .camera-btn svg { width: 26px; height: 26px; flex-shrink: 0; }
+
+    .gallery-btn {
+      display: flex; align-items: center; justify-content: center; gap: 8px;
+      background: transparent; color: var(--sub);
+      border: 1px solid var(--border); border-radius: 10px;
+      padding: 12px; font-size: 0.85rem;
+      cursor: pointer; width: 100%;
+    }
+    .gallery-btn:active { background: var(--card); }
+
+    input[type="file"] { display: none; }
+
+    /* ── 처리 중 ── */
+    .processing-card {
+      background: var(--card); border: 1px solid var(--border); border-radius: 14px;
+      padding: 20px; text-align: center;
+    }
+    .processing-card .thumb {
+      width: 100%; max-height: 220px; object-fit: cover;
+      border-radius: 10px; margin-bottom: 14px;
+    }
+    .spinner-wrap { display: flex; align-items: center; justify-content: center; gap: 10px; color: var(--sub); font-size: 0.9rem; }
+    .spinner { width: 20px; height: 20px; border: 2px solid var(--border); border-top-color: var(--blue); border-radius: 50%; animation: spin 0.8s linear infinite; }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    /* ── 결과 카드 ── */
+    .result-card {
+      background: var(--card); border-radius: 14px; overflow: hidden;
+      border: 1px solid var(--border);
+    }
+    .result-card.auto-ok  { border-left: 4px solid var(--green); }
+    .result-card.review   { border-left: 4px solid var(--yellow); }
+    .result-card.manual   { border-left: 4px solid var(--red); }
+    .result-card.ocr-fail { border-left: 4px solid var(--sub); }
+
+    /* 썸네일 */
+    .result-thumb {
+      width: 100%; max-height: 200px; object-fit: cover;
+      display: block; cursor: pointer;
+    }
+
+    /* 결과 본문 */
+    .result-body { padding: 14px; display: flex; flex-direction: column; gap: 10px; }
+
+    /* 상태 행 */
+    .status-row { display: flex; align-items: center; justify-content: space-between; }
+    .status-badge {
+      display: inline-flex; align-items: center; gap: 5px;
+      font-size: 0.8rem; font-weight: 700;
+      padding: 5px 10px; border-radius: 20px;
+    }
+    .badge-auto  { background: rgba(63,185,80,0.15);  color: var(--green); }
+    .badge-review{ background: rgba(210,153,34,0.15); color: var(--yellow); }
+    .badge-manual{ background: rgba(248,81,73,0.15);  color: var(--red); }
+    .badge-fail  { background: rgba(139,148,158,0.15);color: var(--sub); }
+    .fname { font-size: 0.72rem; color: var(--sub); max-width: 55%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+    /* OCR 라인 */
+    .ocr-lines { display: flex; flex-direction: column; gap: 6px; }
+    .ocr-line {
+      display: flex; align-items: center; gap: 10px;
+      background: rgba(255,255,255,0.04); border-radius: 8px;
+      padding: 10px 12px;
+    }
+    .ocr-num { font-size: 0.65rem; color: var(--sub); font-weight: 700; width: 14px; flex-shrink: 0; }
+    .ocr-val { font-size: 1rem; font-weight: 600; font-family: monospace; letter-spacing: 0.03em; flex: 1; }
+    .ocr-check { font-size: 0.85rem; }
+    .ok  { color: var(--green); }
+    .fail{ color: var(--red); }
+
+    /* DB 매칭 */
+    .db-row {
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 8px 12px; border-radius: 8px; font-size: 0.78rem;
+    }
+    .db-row.exact  { background: rgba(63,185,80,0.1); }
+    .db-row.fuzzy  { background: rgba(210,153,34,0.1); }
+    .db-row.none   { background: rgba(139,148,158,0.08); }
+    .db-label { display: flex; align-items: center; gap: 6px; font-weight: 600; }
+    .db-pct { font-weight: 700; font-size: 0.85rem; }
+    .db-pct.exact { color: var(--green); }
+    .db-pct.fuzzy { color: var(--yellow); }
+    .db-details { margin-top: 4px; font-size: 0.72rem; color: var(--sub); padding: 0 12px 6px; display: flex; gap: 6px; flex-wrap: wrap; }
+    .chip { background: rgba(255,255,255,0.06); border-radius: 4px; padding: 2px 7px; }
+    .chip.green { color: var(--green); }
+    .chip.blue  { color: var(--blue); }
+    .chip.purple{ color: var(--purple); }
+
+    /* Agentic 버튼 */
+    .agn-btn {
+      display: flex; align-items: center; justify-content: center; gap: 8px;
+      background: rgba(188,140,255,0.12); color: var(--purple);
+      border: 1px solid rgba(188,140,255,0.3); border-radius: 10px;
+      padding: 12px; font-size: 0.85rem; font-weight: 600;
+      cursor: pointer; width: 100%;
+    }
+    .agn-btn:active { opacity: 0.75; }
+    .agn-btn:disabled { opacity: 0.4; cursor: default; }
+    .agn-badge { font-size: 0.65rem; background: rgba(188,140,255,0.2); color: var(--purple); padding: 2px 6px; border-radius: 4px; }
+
+    /* 구분선 */
+    .divider { height: 1px; background: var(--border); }
+
+    /* 빈 상태 */
+    .empty { text-align: center; padding: 48px 24px; color: var(--sub); }
+    .empty .icon { font-size: 3rem; margin-bottom: 12px; opacity: 0.3; }
+    .empty p { font-size: 0.85rem; line-height: 1.6; }
+
+    /* 이미지 확대 오버레이 */
+    .img-overlay {
+      position: fixed; inset: 0; background: rgba(0,0,0,0.92); z-index: 200;
+      display: flex; align-items: center; justify-content: center;
+    }
+    .img-overlay img { max-width: 100%; max-height: 100%; object-fit: contain; }
+    .img-overlay.hidden { display: none; }
+
+    /* 연속촬영 안내 */
+    .tip { font-size: 0.7rem; color: var(--sub); text-align: center; }
+  </style>
+</head>
+<body>
+
+<!-- 헤더 -->
+<div class="top-bar">
+  <div>
+    <h1>🔥 Heat No. OCR</h1>
+    <div class="sub" id="db-status-label">DB 로딩 중...</div>
+  </div>
+  <a href="/">PC 버전 →</a>
+</div>
+
+<!-- 카메라 입력 (hidden) -->
+<input type="file" id="camera-input" accept="image/*" capture="environment">
+<input type="file" id="gallery-input" accept="image/*" multiple>
+
+<!-- 메인 -->
+<div class="page">
+
+  <!-- 촬영 버튼 -->
+  <div class="camera-section">
+    <button class="camera-btn" onclick="document.getElementById('camera-input').click()">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/>
+        <circle cx="12" cy="13" r="4"/>
+      </svg>
+      촬영하기
+    </button>
+    <button class="gallery-btn" onclick="document.getElementById('gallery-input').click()">
+      📁 갤러리에서 선택
+    </button>
+    <p class="tip">촬영 즉시 자동으로 OCR 분석이 시작됩니다</p>
+  </div>
+
+  <!-- 결과 목록 -->
+  <div id="results-list"></div>
+
+</div>
+
+<!-- 이미지 확대 오버레이 -->
+<div class="img-overlay hidden" id="img-overlay" onclick="this.classList.add('hidden')">
+  <img id="overlay-img" src="" alt="">
+</div>
+
+<script>
+let items = []  // { id, filename, dataUrl, status, standardResult, agenticResult }
+
+// ── DB 상태 표시 ─────────────────────────────────────────────────────────────
+async function loadDBStatus() {
+  try {
+    const res = await fetch('/api/db/status')
+    const d = await res.json()
+    const label = document.getElementById('db-status-label')
+    const parts = []
+    if (d.plate.loaded)   parts.push(`Plate ${d.plate.count.toLocaleString()}개`)
+    if (d.drawing.loaded) parts.push(`Drawing ${d.drawing.count}개`)
+    label.textContent = parts.length ? `DB: ${parts.join(' · ')}` : 'DB 미등록'
+    label.style.color = parts.length ? 'var(--green)' : 'var(--red)'
+  } catch(e) { document.getElementById('db-status-label').textContent = 'DB 연결 오류' }
+}
+
+// ── 파일 처리 ────────────────────────────────────────────────────────────────
+document.getElementById('camera-input').addEventListener('change', e => {
+  if (e.target.files[0]) processFile(e.target.files[0])
+  e.target.value = ''  // 같은 파일 재촬영 가능하도록
+})
+document.getElementById('gallery-input').addEventListener('change', e => {
+  Array.from(e.target.files).forEach(f => processFile(f))
+  e.target.value = ''
+})
+
+function processFile(file) {
+  const reader = new FileReader()
+  reader.onload = e => {
+    const item = {
+      id: Date.now() + Math.random(),
+      filename: file.name,
+      dataUrl: e.target.result,
+      status: 'processing',
+      standardResult: null,
+      agenticResult: null
+    }
+    items.unshift(item)  // 최신 항목이 위에
+    renderList()
+    runStandard(item)
+  }
+  reader.readAsDataURL(file)
+}
+
+// ── Standard OCR ─────────────────────────────────────────────────────────────
+async function runStandard(item) {
+  try {
+    const base64 = item.dataUrl.split(',')[1]
+    const res = await fetch('/api/ocr/standard', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ imageBase64: base64 })
+    })
+    const data = await res.json()
+    if (data.error) {
+      item.standardResult = { error: data.error }
+      item.status = 'error'
+    } else {
+      item.standardResult = data
+      item.status = 'done'
+    }
+  } catch(e) {
+    item.standardResult = { error: e.message }
+    item.status = 'error'
+  }
+  renderList()
+}
+
+// ── Agentic OCR ──────────────────────────────────────────────────────────────
+async function runAgentic(itemId) {
+  const item = items.find(i => i.id === itemId)
+  if (!item) return
+  item.agenticRunning = true
+  renderList()
+  try {
+    const base64 = item.dataUrl.split(',')[1]
+    const res = await fetch('/api/ocr/agentic', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ imageBase64: base64, standardResult: item.standardResult })
+    })
+    const data = await res.json()
+    if (!data.error) item.agenticResult = data
+  } catch(e) {}
+  item.agenticRunning = false
+  renderList()
+}
+
+// ── 렌더링 ───────────────────────────────────────────────────────────────────
+function renderList() {
+  const container = document.getElementById('results-list')
+  if (!items.length) {
+    container.innerHTML = `<div class="empty"><div class="icon">📷</div><p>촬영하면 바로<br>OCR 결과가 여기에 표시됩니다</p></div>`
+    return
+  }
+  container.innerHTML = items.map(item => renderItem(item)).join('')
+}
+
+function renderItem(item) {
+  // 처리 중
+  if (item.status === 'processing') {
+    return `<div class="result-card" style="border-left:4px solid var(--border)">
+      <img class="result-thumb" src="${item.dataUrl}" onclick="enlargeImg('${item.dataUrl.replace(/'/g,"\\'")}')">
+      <div class="result-body">
+        <div class="spinner-wrap"><div class="spinner"></div> OCR 분석 중...</div>
+      </div>
+    </div>`
+  }
+
+  // 에러
+  if (item.status === 'error') {
+    return `<div class="result-card ocr-fail">
+      <img class="result-thumb" src="${item.dataUrl}" onclick="enlargeImg('${item.dataUrl.replace(/'/g,"\\'")}')">
+      <div class="result-body">
+        <div class="status-row">
+          <span class="status-badge badge-fail">⚫ OCR 실패</span>
+          <span class="fname">${item.filename}</span>
+        </div>
+        <div style="font-size:0.78rem;color:var(--red)">${item.standardResult?.error || '알 수 없는 오류'}</div>
+      </div>
+    </div>`
+  }
+
+  const r = item.agenticResult || item.standardResult
+  if (!r) return ''
+
+  const status = r.status || 'OCR_FAIL'
+  const cardClass = { AUTO_OK:'auto-ok', REVIEW:'review', MANUAL:'manual', OCR_FAIL:'ocr-fail' }[status] || 'ocr-fail'
+  const badge = {
+    AUTO_OK:  `<span class="status-badge badge-auto">🟢 AUTO OK</span>`,
+    REVIEW:   `<span class="status-badge badge-review">🟡 REVIEW</span>`,
+    MANUAL:   `<span class="status-badge badge-manual">🔴 MANUAL</span>`,
+    OCR_FAIL: `<span class="status-badge badge-fail">⚫ OCR FAIL</span>`
+  }[status] || ''
+
+  const v = r.validation || {}
+  const lines = [
+    { n:1, val: r.line1||'—', ok: v.heat },
+    { n:2, val: r.line2||'—', ok: v.material },
+    { n:3, val: r.line3||'—', ok: v.drawing }
+  ]
+
+  // DB 매칭 블록
+  const ref = r.refMatch
+  let dbBlock = ''
+  if (ref) {
+    if (ref.matched) {
+      const isExact = ref.confidence >= 1.0
+      const pct = Math.round(ref.confidence * 100)
+      const p = ref.plate
+      const d = ref.drawing
+      let chips = ''
+      if (p) chips += `<span class="chip green">${p.plateNo}</span><span class="chip blue">${p.heatNo}</span>`
+      if (d) chips += `<span class="chip purple">${d.drawingFull}</span>`
+      dbBlock = `
+        <div class="db-row ${isExact?'exact':'fuzzy'}">
+          <span class="db-label">${isExact ? '✅ DB 확정' : '⚠️ DB 근사'}</span>
+          <span class="db-pct ${isExact?'exact':'fuzzy'}">${pct}%</span>
+        </div>
+        ${chips ? `<div class="db-details">${chips}</div>` : ''}`
+    } else {
+      dbBlock = `<div class="db-row none"><span class="db-label" style="color:var(--sub)">— DB 없음</span></div>`
+    }
+  }
+
+  // Agentic 버튼 / 결과
+  const isAgentic = !!item.agenticResult
+  let agnSection = ''
+  if (item.agenticRunning) {
+    agnSection = `<div class="spinner-wrap" style="padding:4px 0"><div class="spinner"></div> 정밀 분석 중...</div>`
+  } else if (isAgentic) {
+    agnSection = `<div style="font-size:0.72rem;color:var(--purple);padding:2px 0">
+      ✦ Agentic Vision 완료 <span class="agn-badge">고정밀</span>
+    </div>`
+  } else {
+    const iid = item.id
+    agnSection = `<button class="agn-btn" onclick="runAgentic(${iid})">
+      ✦ Pro 정밀 분석 실행
+    </button>`
+  }
+
+  return `<div class="result-card ${cardClass}">
+    <img class="result-thumb" src="${item.dataUrl}" onclick="enlargeImg('${item.dataUrl.replace(/'/g,"\\'")}')">
+    <div class="result-body">
+      <div class="status-row">
+        ${badge}
+        <span class="fname">${item.filename}</span>
+      </div>
+      <div class="ocr-lines">
+        ${lines.map(l => `
+          <div class="ocr-line">
+            <span class="ocr-num">${l.n}</span>
+            <span class="ocr-val">${escHtml(l.val)}</span>
+            <span class="ocr-check ${l.ok?'ok':'fail'}">${l.ok?'✓':'✗'}</span>
+          </div>`).join('')}
+      </div>
+      ${dbBlock}
+      <div class="divider"></div>
+      ${agnSection}
+    </div>
+  </div>`
+}
+
+function escHtml(s) {
+  return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')
+}
+
+// ── 이미지 확대 ──────────────────────────────────────────────────────────────
+function enlargeImg(src) {
+  document.getElementById('overlay-img').src = src
+  document.getElementById('img-overlay').classList.remove('hidden')
+}
+
+// ── 초기화 ───────────────────────────────────────────────────────────────────
+loadDBStatus()
+renderList()
+</script>
+</body>
+</html>

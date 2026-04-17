@@ -14,6 +14,11 @@ const app = express()
 app.use(express.json({ limit: '20mb' }))
 app.use(express.static(path.join(__dirname, 'public')))
 
+// ─── 모바일 전용 페이지 ───────────────────────────────────────────────────────
+app.get('/mobile', (req, res) => {
+  res.sendFile(path.join(__dirname, 'public', 'mobile.html'))
+})
+
 // multer - 메모리에 Excel 파일 저장
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 10 * 1024 * 1024 } })
 
