@@ -646,6 +646,60 @@ app.post('/api/db/match', (req, res) => {
   res.json(result)
 })
 
+// ─── POST /api/db/rematch (현재 DB로 일괄 재매칭) ─────────────────────────────
+// 프론트에서 DB 변경 후 기존 OCR 결과들의 refMatch를 현재 DB 기준으로 재계산
+// body: { items: [{ id, line1, line3 }] }
+// response: { results: [{ id, refMatch }] }
+app.post('/api/db/rematch', (req, res) => {
+  const { items } = req.body
+  if (!Array.isArray(items)) return res.status(400).json({ error: 'items array required' })
+
+  const results = items.map(({ id, line1, line3 }) => {
+    const dbMatch = matchWithDBs(line1, line3)
+    const { plateMatch, drawingMatch, combined } = dbMatch
+
+    const refInfo = combined.matched ? {
+      matched: true,
+      confidence: combined.confidence,
+      method: combined.method,
+      plate: plateMatch?.matched ? {
+        plateNo: plateMatch.entry?.plateNo,
+        heatNo: plateMatch.entry?.heatNo,
+        type: plateMatch.entry?.type,
+        confidence: plateMatch.confidence,
+        matchMethod: plateMatch.method
+      } : null,
+      drawing: drawingMatch?.matched ? {
+        drawingFull: drawingMatch.entry?.drawingFull,
+        drawingBase: drawingMatch.entry?.drawingBase,
+        sectionCode: drawingMatch.entry?.sectionCode,
+        skirtNo: drawingMatch.entry?.skirtNo,
+        confidence: drawingMatch.confidence,
+        matchMethod: drawingMatch.method
+      } : null
+    } : { matched: false, confidence: 0, method: 'no_match', plate: null, drawing: null }
+
+    // status 재계산
+    const plateLoaded = getAllPlateEntries().length > 0
+    const drawingLoaded = drawingDB.entries.length > 0
+    const anyDBLoaded = plateLoaded || drawingLoaded
+    let newStatus = null
+    if (anyDBLoaded) {
+      if (!combined.matched) {
+        newStatus = 'MANUAL'
+      } else {
+        const plateExact = !plateLoaded || (plateMatch?.matched && plateMatch.confidence >= 1.0)
+        const drawingExact = !drawingLoaded || (drawingMatch?.matched && drawingMatch.confidence >= 1.0)
+        newStatus = (plateExact && drawingExact) || combined.confidence >= 1.0 ? 'AUTO_OK' : 'REVIEW'
+      }
+    }
+
+    return { id, refMatch: refInfo, newStatus }
+  })
+
+  res.json({ ok: true, results })
+})
+
 // ─── API Key 로드 ─────────────────────────────────────────────────────────────
 function getApiConfig() {
   if (runtimeApiKey) return { apiKey: runtimeApiKey, baseURL: runtimeBaseURL }

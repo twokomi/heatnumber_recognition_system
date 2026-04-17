@@ -1490,7 +1490,69 @@ async function loadDBStatus() {
     loadPlateFileList()
     // DB 로드 상태 전역 플래그 (모달에서 사용)
     window._dbLoaded = data.plate.loaded || data.drawing.loaded
+
+    // DB 변경 후 기존 OCR 결과 refMatch 재계산
+    rematchAll()
   } catch(e) { console.error('[db status]', e) }
+}
+
+// ── DB 변경 시 기존 OCR 결과 refMatch 일괄 재계산 ────────────────────────────
+// DB 업로드/삭제 후 호출 → 현재 DB 기준으로 모든 이미지 refMatch 갱신
+async function rematchAll() {
+  const targets = images.filter(i => i.status === 'done' || i.status === 'error')
+  if (!targets.length) return
+
+  // 재매칭할 아이템 목록 구성 (standardResult와 agenticResult 각각)
+  const items = []
+  targets.forEach(img => {
+    if (img.standardResult && img.standardResult.line1 !== undefined) {
+      items.push({ id: img.id + '_std', line1: img.standardResult.line1, line3: img.standardResult.line3 })
+    }
+    if (img.agenticResult && img.agenticResult.line1 !== undefined) {
+      items.push({ id: img.id + '_agn', line1: img.agenticResult.line1, line3: img.agenticResult.line3 })
+    }
+  })
+  if (!items.length) return
+
+  try {
+    const res = await fetch('/api/db/rematch', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ items })
+    })
+    const data = await res.json()
+    if (!data.ok) return
+
+    // 결과를 각 이미지의 result에 반영
+    const resultMap = {}
+    data.results.forEach(r => { resultMap[r.id] = r })
+
+    targets.forEach(img => {
+      const stdKey = img.id + '_std'
+      const agnKey = img.id + '_agn'
+
+      if (img.standardResult && resultMap[stdKey]) {
+        const r = resultMap[stdKey]
+        img.standardResult.refMatch = r.refMatch
+        // status도 갱신 (OCR_FAIL은 포맷 문제이므로 DB 재매칭으로 변경 안 함)
+        if (img.standardResult.status !== 'OCR_FAIL' && r.newStatus) {
+          img.standardResult.status = r.newStatus
+        }
+      }
+      if (img.agenticResult && resultMap[agnKey]) {
+        const r = resultMap[agnKey]
+        img.agenticResult.refMatch = r.refMatch
+        if (img.agenticResult.status !== 'OCR_FAIL' && r.newStatus) {
+          img.agenticResult.status = r.newStatus
+        }
+      }
+    })
+
+    // UI 갱신
+    renderGrid()
+    updateStats()
+    if (currentModalIdx >= 0) populateModal(currentModalIdx)
+  } catch(e) { console.error('[rematchAll]', e) }
 }
 
 // ── 헤더 DB 배지 (설정 모달 외부에도 표시) ───────────────────────────────────
