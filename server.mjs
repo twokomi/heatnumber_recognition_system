@@ -2,13 +2,16 @@ import express from 'express'
 import fs from 'fs'
 import path from 'path'
 import { fileURLToPath } from 'url'
+import { execFile } from 'child_process'
 import multer from 'multer'
-import * as XLSX from 'xlsx'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 const DEV_VARS_PATH = path.join(__dirname, '.dev.vars')
-const PLATE_DB_PATH = path.join(__dirname, 'plate_db.json')   // 멀티파일 메타 저장
-const DRAWING_DB_PATH = path.join(__dirname, 'drawing_db.json')
+const UNIFIED_DB_PATH  = path.join(__dirname, 'unified_db.json')      // 메타 (파일목록, 통계)
+const UNIFIED_ENT_PATH = path.join(__dirname, 'unified_entries.json')  // entries 별도 저장
+// 레거시 파일 경로 (삭제용으로만 유지)
+const PLATE_DB_PATH    = path.join(__dirname, 'plate_db.json')
+const DRAWING_DB_PATH  = path.join(__dirname, 'drawing_db.json')
 
 const app = express()
 app.use(express.json({ limit: '20mb' }))
@@ -20,7 +23,7 @@ app.get('/mobile', (req, res) => {
 })
 
 // multer - 메모리에 Excel 파일 저장
-const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 10 * 1024 * 1024 } })
+const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 50 * 1024 * 1024 } })
 
 // ─── .dev.vars 파일 로드/저장 ─────────────────────────────────────────────────
 function loadDevVars() {
@@ -52,50 +55,70 @@ let runtimeApiKey = initConfig.apiKey || process.env.OPENAI_API_KEY || ''
 let runtimeBaseURL = initConfig.baseURL || process.env.OPENAI_BASE_URL || 'https://api.openai.com/v1'
 if (runtimeApiKey) console.log(`[startup] API Key loaded: ${runtimeApiKey.slice(0,12)}...`)
 
-// ─── DB 구조 ──────────────────────────────────────────────────────────────────
+// ─── DB 구조 (통합 신규 형식) ───────────────────────────────────────────────
 /**
- * plateDB: Plate Number DB — 멀티 파일 관리
- *   files: [{ fileId, filename, uploadedAt, entries: [{plateNo, heatNo, type}], alphaCount, numericCount }]
- *   (entries 전체는 getAllPlateEntries()로 집계)
+ * unifiedDB: 통합 DB — 새 Excel(4 Projects SP Hardstamp Details) 형식
+ *   files: [{ fileId, filename, uploadedAt, entries, plateCount, drawingCount }]
+ *   entries per file: [{
+ *     plateNo,      // PlateID 컬럼  e.g. 'B5K866-A04-A01' or '5605819-04-2-02'
+ *     heatNo,       // Heats 컬럼    e.g. 'B5K866' or '5605819'
+ *     type,         // 'alpha' | 'numeric'
+ *     drawingFull,  // 조합 결과     e.g. '29311949-U07' or '29308304-B02'
+ *     drawingBase,  // 8자리         e.g. '29311949'
+ *     sectionCode,  // 1글자         e.g. 'U'
+ *     skirtNo,      // 숫자          e.g. 7
+ *     project,      // Project 컬럼 (참고용)
+ *   }]
  *
- * drawingDB: Drawing Number DB (단일 파일)
- *   entries: [{ drawingBase, sectionCode, skirtNo, drawingFull }]
+ * 레거시 호환: getAllPlateEntries(), drawingDB.entries 형태로도 접근 가능
  */
-let plateDB = { files: [], updatedAt: null }   // files 배열로 멀티파일 관리
-let drawingDB = { entries: [], updatedAt: null, filename: null }
+let unifiedDB = { files: [], updatedAt: null }  // 메타만 (entries 제외)
+let unifiedEntries = []  // 전체 entries 메모리 캐시
 
-/** 모든 파일에서 plate entries 집계 (plateNo 기준 중복 제거) */
-function getAllPlateEntries() {
+// 레거시 변수 (참조만 유지 — 실제 사용 안 함)
+const plateDB  = { files: [], updatedAt: null }
+const drawingDB = { entries: [], updatedAt: null, filename: null }
+
+/** unifiedEntries에서 plateNo 중복 제거 목록 반환 */
+function getAllPlateEntries() { return unifiedEntries }
+
+/** drawingFull 중복 제거 목록 반환 */
+function getAllDrawingEntries() {
   const seen = new Set()
-  const all = []
-  for (const f of plateDB.files) {
-    for (const e of f.entries) {
-      if (!seen.has(e.plateNo)) { seen.add(e.plateNo); all.push(e) }
+  const all  = []
+  for (const e of unifiedEntries) {
+    if (e.drawingFull && !seen.has(e.drawingFull)) {
+      seen.add(e.drawingFull)
+      all.push({ drawingBase: e.drawingBase, sectionCode: e.sectionCode, skirtNo: e.skirtNo, drawingFull: e.drawingFull })
     }
   }
   return all
 }
 
+/** DB 저장 — meta와 entries를 분리 파일에 저장 */
+function saveUnifiedDB() {
+  // meta (entries 제외)
+  const meta = {
+    files: unifiedDB.files.map(f => ({ ...f, entries: undefined })),
+    updatedAt: unifiedDB.updatedAt
+  }
+  fs.writeFileSync(UNIFIED_DB_PATH, JSON.stringify(meta), 'utf8')
+  // entries 별도 저장
+  fs.writeFileSync(UNIFIED_ENT_PATH, JSON.stringify(unifiedEntries), 'utf8')
+}
+
 function loadDBs() {
-  try {
-    if (fs.existsSync(PLATE_DB_PATH)) {
-      const raw = JSON.parse(fs.readFileSync(PLATE_DB_PATH, 'utf8'))
-      // 구버전(entries 배열) 호환: 자동 마이그레이션
-      if (Array.isArray(raw.entries) && !raw.files) {
-        plateDB = { files: [], updatedAt: raw.updatedAt }
-        console.log('[plateDB] Legacy format detected, migrated to multi-file structure')
-      } else {
-        plateDB = raw
-      }
-      console.log(`[plateDB] Loaded ${plateDB.files?.length || 0} file(s), ${getAllPlateEntries().length} total entries`)
-    }
-  } catch(e) { console.error('[plateDB] load error:', e.message) }
-  try {
-    if (fs.existsSync(DRAWING_DB_PATH)) {
-      drawingDB = JSON.parse(fs.readFileSync(DRAWING_DB_PATH, 'utf8'))
-      console.log(`[drawingDB] Loaded ${drawingDB.entries.length} entries`)
-    }
-  } catch(e) { console.error('[drawingDB] load error:', e.message) }
+  // 신규 unified DB 로드
+  if (fs.existsSync(UNIFIED_DB_PATH) && fs.existsSync(UNIFIED_ENT_PATH)) {
+    try {
+      unifiedDB      = JSON.parse(fs.readFileSync(UNIFIED_DB_PATH, 'utf8'))
+      unifiedEntries = JSON.parse(fs.readFileSync(UNIFIED_ENT_PATH, 'utf8'))
+      console.log(`[unifiedDB] Loaded ${unifiedDB.files?.length || 0} file(s), ${unifiedEntries.length} entries, ${getAllDrawingEntries().length} unique drawings`)
+      return
+    } catch(e) { console.error('[unifiedDB] load error:', e.message) }
+  }
+  // unified DB 없음 → 비어있는 상태로 시작 (레거시 마이그레이션 없음)
+  console.log('[DB] No unified DB found. Please upload the new Excel file via /api/db/plate/upload')
 }
 loadDBs()
 
@@ -197,165 +220,11 @@ function getPlateType(plateNo) {
   return 'unknown'
 }
 
-// ─── Excel 파싱: Plate Number DB ─────────────────────────────────────────────
+// ─── 매칭 엔진 (unifiedDB 기반) ──────────────────────────────────────────────
 /**
- * Excel 파일에서 Plate Number DB 파싱
- * 컬럼 G (인덱스 6) = Plate No
- */
-function parsePlateExcel(buffer) {
-  const wb = XLSX.read(buffer, { type: 'buffer' })
-  const ws = wb.Sheets[wb.SheetNames[0]]
-  const rows = XLSX.utils.sheet_to_json(ws, { header: 1, defval: '' })
-
-  if (rows.length < 2) throw new Error('Excel에 데이터가 없습니다')
-
-  // 헤더 행 찾기 (첫 번째 행 또는 "Plate No" 포함 행)
-  let headerRowIdx = 0
-  let colGIdx = 6  // 기본값: 컬럼 G (0-indexed)
-  
-  for (let i = 0; i < Math.min(5, rows.length); i++) {
-    const rowStr = rows[i].map(c => String(c || '').toLowerCase())
-    const plateColIdx = rowStr.findIndex(c => c.includes('plate') && (c.includes('no') || c.includes('num')))
-    if (plateColIdx >= 0) {
-      headerRowIdx = i
-      colGIdx = plateColIdx
-      break
-    }
-  }
-
-  console.log(`[parsePlateExcel] headerRow=${headerRowIdx}, plateCol=${colGIdx} (${String.fromCharCode(65 + colGIdx)})`)
-
-  const entries = []
-  let skipped = 0
-
-  for (let i = headerRowIdx + 1; i < rows.length; i++) {
-    const row = rows[i]
-    const rawPlate = String(row[colGIdx] || '').trim()
-    if (!rawPlate) { skipped++; continue }
-
-    const heatNo = extractHeatNumber(rawPlate)
-    const type = getPlateType(rawPlate)
-
-    if (!heatNo) { skipped++; continue }
-
-    entries.push({
-      plateNo: rawPlate.toUpperCase(),
-      heatNo: heatNo.toUpperCase(),
-      type
-    })
-  }
-
-  // 중복 제거
-  const unique = []
-  const seen = new Set()
-  for (const e of entries) {
-    if (!seen.has(e.plateNo)) {
-      seen.add(e.plateNo)
-      unique.push(e)
-    }
-  }
-
-  return { entries: unique, skipped }
-}
-
-// ─── Excel 파싱: Drawing Number DB ───────────────────────────────────────────
-/**
- * Excel 파일에서 Drawing Number DB 파싱
- * 컬럼 D (인덱스 3) = Skirt Number (e.g. "u02" → 2)
- * 컬럼 F (인덱스 5) = Section Code (e.g. "B", "L", "U" 등)
- * 컬럼 G (인덱스 6) = Drawing Number (8자리 숫자, e.g. "29311969")
- */
-function parseDrawingExcel(buffer) {
-  const wb = XLSX.read(buffer, { type: 'buffer' })
-  const ws = wb.Sheets[wb.SheetNames[0]]
-  const rows = XLSX.utils.sheet_to_json(ws, { header: 1, defval: '' })
-
-  if (rows.length < 2) throw new Error('Excel에 데이터가 없습니다')
-
-  // 컬럼 인덱스 감지 (헤더 행에서 찾기)
-  let headerRowIdx = 0
-  let colSkirt = 3, colSection = 5, colDrawing = 6  // 기본: D, F, G
-
-  for (let i = 0; i < Math.min(5, rows.length); i++) {
-    const rowStr = rows[i].map(c => String(c || '').toLowerCase())
-    const skirtIdx = rowStr.findIndex(c => c.includes('skirt'))
-    const sectionIdx = rowStr.findIndex(c => c.includes('section') && (c.includes('code') || c.includes('type') || c === 'section code'))
-    const drawingIdx = rowStr.findIndex(c => (c.includes('drawing') && c.includes('no')) || c === 'drawing number' || c === 'drawing no')
-
-    if (skirtIdx >= 0 || drawingIdx >= 0) {
-      headerRowIdx = i
-      if (skirtIdx >= 0) colSkirt = skirtIdx
-      if (sectionIdx >= 0) colSection = sectionIdx
-      if (drawingIdx >= 0) colDrawing = drawingIdx
-      break
-    }
-  }
-
-  console.log(`[parseDrawingExcel] headerRow=${headerRowIdx}, skirt=${colSkirt}(${String.fromCharCode(65+colSkirt)}), section=${colSection}(${String.fromCharCode(65+colSection)}), drawing=${colDrawing}(${String.fromCharCode(65+colDrawing)})`)
-
-  const SECTION_CODE_MAP = {
-    'b': 'B', 'bot': 'B', 'bottom': 'B',
-    'l': 'L', 'l1': 'L', 'mid1': 'L', 'mid.1': 'L', 'mid 1': 'L',
-    'm': 'M', 'l2': 'M', 'mid2': 'M', 'mid.2': 'M', 'mid 2': 'M',
-    'u': 'U', 'l3': 'U', 'mid3': 'U', 'mid.3': 'U', 'mid 3': 'U',
-    'w': 'W', 'l4': 'W', 'mid4': 'W', 'mid.4': 'W', 'mid 4': 'W',
-    't': 'T', 'top': 'T'
-  }
-
-  const entries = []
-  let skipped = 0
-
-  for (let i = headerRowIdx + 1; i < rows.length; i++) {
-    const row = rows[i]
-
-    // Drawing Number 파싱
-    const rawDrawing = String(row[colDrawing] || '').trim().replace(/\s/g, '')
-    if (!rawDrawing) { skipped++; continue }
-
-    // 8자리 숫자 추출
-    const drawingBase = rawDrawing.replace(/\D/g, '').slice(0, 8)
-    if (drawingBase.length !== 8) { skipped++; continue }
-
-    // Section Code 파싱
-    let rawSection = String(row[colSection] || '').trim().toLowerCase()
-    let sectionCode = SECTION_CODE_MAP[rawSection] || rawSection.toUpperCase().slice(0, 1)
-    if (!['B','L','M','U','W','T'].includes(sectionCode)) {
-      // Drawing Number 자체에서 추출 시도 (e.g. "29311969-U02")
-      const m = rawDrawing.match(/-([BLMUWT])(\d{2})$/)
-      if (m) sectionCode = m[1]
-      else { skipped++; continue }
-    }
-
-    // Skirt Number 파싱 (e.g. "u02" → 2, "02" → 2, "2" → 2)
-    const rawSkirt = String(row[colSkirt] || '').trim()
-    const skirtMatch = rawSkirt.match(/(\d+)/)
-    if (!skirtMatch) { skipped++; continue }
-    const skirtNo = parseInt(skirtMatch[1])
-
-    // Drawing 전체 번호 조합
-    const drawingFull = `${drawingBase}-${sectionCode}${String(skirtNo).padStart(2, '0')}`
-
-    entries.push({ drawingBase, sectionCode, skirtNo, drawingFull })
-  }
-
-  // 중복 제거 (drawingFull 기준)
-  const unique = []
-  const seen = new Set()
-  for (const e of entries) {
-    if (!seen.has(e.drawingFull)) {
-      seen.add(e.drawingFull)
-      unique.push(e)
-    }
-  }
-
-  return { entries: unique, skipped }
-}
-
-// ─── 매칭 엔진 ───────────────────────────────────────────────────────────────
-/**
- * OCR 결과와 두 DB를 매칭
- * @param {string} ocrLine1 - OCR Plate/Heat Number
- * @param {string} ocrLine3 - OCR Drawing Number
+ * OCR 결과와 unifiedDB를 매칭
+ * @param {string} ocrLine1 - 정규화된 Plate/Heat Number
+ * @param {string} ocrLine3 - 정규화된 Drawing Number (full or base-only)
  * @returns {{ plateMatch, drawingMatch, combined }}
  */
 function matchWithDBs(ocrLine1, ocrLine3) {
@@ -369,37 +238,35 @@ function matchWithDBs(ocrLine1, ocrLine3) {
   const ocr1 = normalize(ocrLine1)
   const ocr3 = normalize(ocrLine3)
 
-  // ─── Plate DB 매칭 (멀티파일 집계 entries 사용) ──────────────────────────
-  const allPlateEntries = getAllPlateEntries()
-  if (allPlateEntries.length > 0 && ocr1) {
-    // 전략 1: plateNo 완전 매칭
-    let found = allPlateEntries.find(e => e.plateNo === ocr1)
+  const allEntries  = getAllPlateEntries()    // unified entries (plate+drawing 통합)
+  const allDrawings = getAllDrawingEntries()  // drawing 전용 뷰
+
+  // ─── Plate 매칭 ──────────────────────────────────────────────────────────
+  if (allEntries.length > 0 && ocr1) {
+    // 전략1: plateNo 완전 매칭
+    let found = allEntries.find(e => e.plateNo === ocr1)
     if (found) {
       result.plateMatch = { matched: true, entry: found, confidence: 1.0, method: 'plate_exact' }
     } else {
-      // 전략 2: heatNo 완전 매칭
+      // 전략2: heatNo 완전 매칭
       const ocrHeat = extractHeatNumber(ocrLine1)?.toUpperCase()
       if (ocrHeat) {
-        const byHeat = allPlateEntries.filter(e => e.heatNo === ocrHeat)
+        const byHeat = allEntries.filter(e => e.heatNo === ocrHeat)
         if (byHeat.length > 0) {
-          result.plateMatch = { matched: true, entry: byHeat[0], allByHeat: byHeat, confidence: 0.95, method: 'heat_exact' }  // Heat만 일치
+          result.plateMatch = { matched: true, entry: byHeat[0], allByHeat: byHeat, confidence: 0.95, method: 'heat_exact' }
         }
       }
-
+      // 전략3: 퍼지 매칭
       if (!result.plateMatch) {
-        // 전략 3: 퍼지 매칭 (Plate No 유사도)
         let bestPlate = { entry: null, score: 0 }
-        for (const e of allPlateEntries) {
-          const score = stringSimilarity(ocr1, e.plateNo)
-          if (score > bestPlate.score) bestPlate = { entry: e, score }
-        }
-        let bestHeat = { entry: null, score: 0 }
-        for (const e of allPlateEntries) {
-          const score = stringSimilarity(ocr1, e.heatNo)
-          if (score > bestHeat.score) bestHeat = { entry: e, score }
+        let bestHeat  = { entry: null, score: 0 }
+        for (const e of allEntries) {
+          const sp = stringSimilarity(ocr1, e.plateNo)
+          if (sp > bestPlate.score) bestPlate = { entry: e, score: sp }
+          const sh = stringSimilarity(ocr1, e.heatNo)
+          if (sh > bestHeat.score) bestHeat = { entry: e, score: sh }
         }
         const best = bestPlate.score >= bestHeat.score ? bestPlate : bestHeat
-
         if (best.score >= 0.8) {
           result.plateMatch = { matched: true, entry: best.entry, confidence: 0.75 + best.score * 0.15, method: 'plate_fuzzy', fuzzyScore: best.score }
         }
@@ -407,57 +274,51 @@ function matchWithDBs(ocrLine1, ocrLine3) {
     }
   }
 
-  // ─── Drawing DB 매칭 ──────────────────────────────────────────────────────
-  if (drawingDB.entries.length > 0 && ocr3) {
-    // 전략 1: drawingFull 완전 매칭
-    const found = drawingDB.entries.find(e => e.drawingFull === ocr3)
-    if (found) {
-      result.drawingMatch = { matched: true, entry: found, confidence: 1.0, method: 'drawing_exact' }
-    } else {
-      // 전략 1B: TYPE B — 8자리 drawingBase만 있는 경우 (원본 이미지가 TYPE B 형식)
-      if (/^\d{8}$/.test(ocr3)) {
-        const byBase = drawingDB.entries.filter(e => e.drawingBase === ocr3)
-        if (byBase.length === 1) {
-          // 하나만 매칭되면 확정
-          result.drawingMatch = { matched: true, entry: byBase[0], confidence: 1.0, method: 'drawing_base_exact' }
-        } else if (byBase.length > 1) {
-          // 여러 개 매칭 — 가장 첫 번째를 반환하되 confidence는 0.9
-          result.drawingMatch = { matched: true, entry: byBase[0], allByBase: byBase, confidence: 0.9, method: 'drawing_base_multi' }
+  // ─── Drawing 매칭 (unifiedDB allDrawings만 사용) ──────────────────────────
+  if (allDrawings.length > 0 && ocr3) {
+    // 전략1: drawingFull 완전 매칭 (e.g. 29308316-B01)
+    const foundFull = allDrawings.find(e => e.drawingFull === ocr3)
+    if (foundFull) {
+      result.drawingMatch = { matched: true, entry: foundFull, confidence: 1.0, method: 'drawing_exact' }
+    }
+
+    // 전략1B: 8자리 base만 있는 경우 (TYPE B 스탬프: line1=29308308)
+    if (!result.drawingMatch && /^\d{8}$/.test(ocr3)) {
+      const byBase = allDrawings.filter(e => e.drawingBase === ocr3)
+      if (byBase.length === 1) {
+        result.drawingMatch = { matched: true, entry: byBase[0], confidence: 1.0, method: 'drawing_base_exact' }
+      } else if (byBase.length > 1) {
+        result.drawingMatch = { matched: true, entry: byBase[0], allByBase: byBase, confidence: 0.9, method: 'drawing_base_multi' }
+      }
+    }
+
+    // 전략2: base+section 매칭 (full form OCR에서 skirtNo만 다른 경우)
+    if (!result.drawingMatch) {
+      const m = ocr3.match(/^(\d{8})-([A-Z])(\d{2})$/)
+      if (m) {
+        const byBase = allDrawings.find(e => e.drawingBase === m[1] && e.sectionCode === m[2])
+        if (byBase) {
+          result.drawingMatch = { matched: true, entry: byBase, confidence: 0.95, method: 'drawing_base_match' }
         }
       }
+    }
 
-      if (!result.drawingMatch) {
-        // 전략 2: drawingBase+sectionCode 매칭 (full form에서 base+code 추출)
-        const m = ocr3.match(/^(\d{8})-([BLMUWT])(\d{2})$/)
-        if (m) {
-          const [, base, code, skirt] = m
-          const byBase = drawingDB.entries.find(e => e.drawingBase === base && e.sectionCode === code)
-          if (byBase) {
-            result.drawingMatch = { matched: true, entry: byBase, confidence: 0.95, method: 'drawing_base_match' }  // 기본번호 일치
-          }
-        }
+    // 전략3: 퍼지 매칭
+    if (!result.drawingMatch) {
+      let best = { entry: null, score: 0 }
+      for (const e of allDrawings) {
+        const s = stringSimilarity(ocr3, e.drawingFull)
+        if (s > best.score) best = { entry: e, score: s }
       }
-
-      if (!result.drawingMatch) {
-        // 전략 3: 퍼지 매칭 (Drawing Full 유사도)
-        let best = { entry: null, score: 0 }
-        for (const e of drawingDB.entries) {
-          const score = stringSimilarity(ocr3, e.drawingFull)
-          if (score > best.score) best = { entry: e, score }
-        }
-        if (best.score >= 0.8) {
-          result.drawingMatch = { matched: true, entry: best.entry, confidence: 0.70, method: 'drawing_fuzzy', fuzzyScore: best.score }
-        }
+      if (best.score >= 0.8) {
+        result.drawingMatch = { matched: true, entry: best.entry, confidence: 0.70, method: 'drawing_fuzzy', fuzzyScore: best.score }
       }
     }
   }
 
-  // ─── 통합 신뢰도 계산 ─────────────────────────────────────────────────────
-  // combined.confidence = "DB 매칭 자체의 신뢰도"
-  // 각 DB가 독립적으로 매칭되므로, 매칭된 것들의 신뢰도를 그대로 반영
-  // plate_exact / drawing_exact = 1.0 (DB에 정확히 존재)
-  // 한쪽만 매칭되어도 해당 신뢰도를 그대로 사용 (× 0.85 패널티 제거)
+  // ─── 통합 신뢰도 ─────────────────────────────────────────────────────────
   if (result.plateMatch?.matched && result.drawingMatch?.matched) {
+    // Plate+Drawing 둘 다 매칭 — 평균
     result.combined = {
       matched: true,
       confidence: (result.plateMatch.confidence * 0.5 + result.drawingMatch.confidence * 0.5),
@@ -544,136 +405,167 @@ app.post('/api/prompts/reset', (req, res) => {
   res.json({ ok: true })
 })
 
-// ─── POST /api/db/plate/upload (Excel 업로드 — 멀티파일) ─────────────────────
-app.post('/api/db/plate/upload', upload.array('files', 50), (req, res) => {
+// ─── POST /api/db/plate/upload (Excel 업로드 — Python subprocess 파싱) ────────
+app.post('/api/db/plate/upload', upload.array('files', 10), async (req, res) => {
   try {
     const uploadedFiles = req.files
     if (!uploadedFiles?.length) return res.status(400).json({ error: '파일이 없습니다' })
 
     const results = []
-    const errors = []
+    const errors  = []
 
     for (const file of uploadedFiles) {
       const filename = file.originalname
-      // 이미 같은 파일명 존재 시 덮어쓰기
-      const existingIdx = plateDB.files.findIndex(f => f.filename === filename)
-
       try {
-        const { entries, skipped } = parsePlateExcel(file.buffer)
-        if (!entries.length) { errors.push({ filename, error: 'Plate Number를 찾을 수 없습니다' }); continue }
+        // 임시 파일 저장
+        const tmpXlsx    = path.join(__dirname, `tmp_upload_${Date.now()}.xlsx`)
+        const tmpEntries = path.join(__dirname, `tmp_entries_${Date.now()}.json`)
+        const tmpMeta    = path.join(__dirname, `tmp_meta_${Date.now()}.json`)
+        const fileId     = `${Date.now()}_${Math.random().toString(36).slice(2,7)}`
 
-        const alphaCount = entries.filter(e => e.type === 'alpha').length
-        const numericCount = entries.filter(e => e.type === 'numeric').length
-        const fileId = `${Date.now()}_${Math.random().toString(36).slice(2,7)}`
-        const fileRecord = { fileId, filename, uploadedAt: new Date().toISOString(), entries, alphaCount, numericCount, skipped }
+        fs.writeFileSync(tmpXlsx, file.buffer)
+
+        // Python subprocess로 파싱
+        const parseResult = await new Promise((resolve, reject) => {
+          execFile('python3', [
+            path.join(__dirname, 'parse_excel.py'),
+            tmpXlsx, tmpEntries, tmpMeta, fileId, filename
+          ], { timeout: 120000 }, (err, stdout, stderr) => {
+            try { fs.unlinkSync(tmpXlsx) } catch(e) {}
+            if (err) { reject(new Error(stderr || err.message)); return }
+            try { resolve(JSON.parse(stdout.trim())) }
+            catch(e) { reject(new Error('Python output parse error: ' + stdout.slice(0,200))) }
+          })
+        })
+
+        if (!parseResult.ok) throw new Error(parseResult.error || '파싱 실패')
+
+        // entries 로드
+        const newEntries = JSON.parse(fs.readFileSync(tmpEntries, 'utf8'))
+        try { fs.unlinkSync(tmpEntries) } catch(e) {}
+        try { fs.unlinkSync(tmpMeta)    } catch(e) {}
+
+        const { count: entryCount, alphaCount, numericCount, drawingCount, skipped } = parseResult
+
+        // unifiedDB 메타 업데이트
+        const existingIdx = unifiedDB.files.findIndex(f => f.filename === filename)
+        const fileMeta = {
+          fileId, filename, uploadedAt: new Date().toISOString(),
+          count: entryCount, alphaCount, numericCount,
+          drawingCount: drawingCount || 0, skipped, format: 'new'
+        }
 
         if (existingIdx >= 0) {
-          plateDB.files[existingIdx] = fileRecord
-          console.log(`[plateDB] Updated: ${filename} (${entries.length} entries)`)
+          const oldId = unifiedDB.files[existingIdx].fileId
+          unifiedEntries = unifiedEntries.filter(e => e._fileId !== oldId)
+          unifiedDB.files[existingIdx] = fileMeta
+          console.log(`[unifiedDB] Updated: ${filename} (${entryCount} entries)`)
         } else {
-          plateDB.files.push(fileRecord)
-          console.log(`[plateDB] Added: ${filename} (${entries.length} entries)`)
+          unifiedDB.files.push(fileMeta)
+          console.log(`[unifiedDB] Added: ${filename} (${entryCount} entries)`)
         }
-        results.push({ filename, count: entries.length, alphaCount, numericCount, skipped, replaced: existingIdx >= 0 })
+        unifiedEntries.push(...newEntries)
+
+        results.push({
+          filename, count: entryCount, alphaCount, numericCount,
+          drawingCount: drawingCount || 0, skipped, format: 'new', replaced: existingIdx >= 0
+        })
       } catch(e) {
+        console.error(`[upload] ${filename} error:`, e.message)
         errors.push({ filename, error: e.message })
       }
     }
 
-    plateDB.updatedAt = new Date().toISOString()
-    fs.writeFileSync(PLATE_DB_PATH, JSON.stringify(plateDB, null, 2), 'utf8')
+    unifiedDB.updatedAt = new Date().toISOString()
+    saveUnifiedDB()
 
-    const totalEntries = getAllPlateEntries().length
-    res.json({ ok: true, uploaded: results, errors, totalFiles: plateDB.files.length, totalEntries })
+    const totalEntries  = unifiedEntries.length
+    const totalDrawings = getAllDrawingEntries().length
+    res.json({ ok: true, uploaded: results, errors, totalFiles: unifiedDB.files.length, totalEntries, totalDrawings })
   } catch(e) {
-    console.error('[plateDB] upload error:', e.message)
+    console.error('[upload] error:', e.message)
     res.status(400).json({ error: e.message })
   }
 })
+
 
 // ─── DELETE /api/db/plate/file/:fileId (개별 파일 삭제) ──────────────────────
 app.delete('/api/db/plate/file/:fileId', (req, res) => {
   const { fileId } = req.params
-  const idx = plateDB.files.findIndex(f => f.fileId === fileId)
+  const idx = unifiedDB.files.findIndex(f => f.fileId === fileId)
   if (idx < 0) return res.status(404).json({ error: '파일을 찾을 수 없습니다' })
-  const removed = plateDB.files.splice(idx, 1)[0]
-  plateDB.updatedAt = new Date().toISOString()
-  fs.writeFileSync(PLATE_DB_PATH, JSON.stringify(plateDB, null, 2), 'utf8')
-  console.log(`[plateDB] Removed file: ${removed.filename}`)
-  const totalEntries = getAllPlateEntries().length
-  res.json({ ok: true, removed: removed.filename, totalFiles: plateDB.files.length, totalEntries })
+  const removed = unifiedDB.files.splice(idx, 1)[0]
+  // entries에서 해당 파일 항목 제거
+  unifiedEntries = unifiedEntries.filter(e => e._fileId !== fileId)
+  unifiedDB.updatedAt = new Date().toISOString()
+  saveUnifiedDB()
+  console.log(`[unifiedDB] Removed file: ${removed.filename}`)
+  res.json({ ok: true, removed: removed.filename, totalFiles: unifiedDB.files.length, totalEntries: unifiedEntries.length })
 })
 
 // ─── GET /api/db/plate/files (파일 목록 조회) ─────────────────────────────────
 app.get('/api/db/plate/files', (req, res) => {
-  const files = plateDB.files.map(f => ({
-    fileId: f.fileId,
-    filename: f.filename,
-    uploadedAt: f.uploadedAt,
-    count: f.entries.length,
-    alphaCount: f.alphaCount,
-    numericCount: f.numericCount,
-    skipped: f.skipped
+  const files = unifiedDB.files.map(f => ({
+    fileId:       f.fileId,
+    filename:     f.filename,
+    uploadedAt:   f.uploadedAt,
+    count:        f.count       || 0,  // meta에 저장된 count (entries 별도)
+    alphaCount:   f.alphaCount  || 0,
+    numericCount: f.numericCount || 0,
+    drawingCount: f.drawingCount || 0,
+    skipped:      f.skipped     || 0,
+    format:       f.format      || 'new'
   }))
-  res.json({ files, totalFiles: files.length, totalEntries: getAllPlateEntries().length })
+  res.json({ files, totalFiles: files.length, totalEntries: getAllPlateEntries().length, totalDrawings: getAllDrawingEntries().length })
 })
 
-// ─── POST /api/db/drawing/upload (Excel 업로드) ───────────────────────────────
+// ─── POST /api/db/drawing/upload — 신규 통합 형식만 허용 ────────────────────
 app.post('/api/db/drawing/upload', upload.single('file'), (req, res) => {
-  try {
-    if (!req.file) return res.status(400).json({ error: '파일이 없습니다' })
-    const filename = req.file.originalname
-    console.log(`[drawingDB] Uploading: ${filename} (${req.file.size} bytes)`)
-
-    const { entries, skipped } = parseDrawingExcel(req.file.buffer)
-    if (!entries.length) return res.status(400).json({ error: 'Drawing Number를 찾을 수 없습니다. 컬럼 D(Skirt No), F(Section Code), G(Drawing No)를 확인해주세요.' })
-
-    drawingDB = { entries, updatedAt: new Date().toISOString(), filename }
-    fs.writeFileSync(DRAWING_DB_PATH, JSON.stringify(drawingDB, null, 2), 'utf8')
-
-    console.log(`[drawingDB] Saved ${entries.length} entries, skipped:${skipped}`)
-    res.json({ ok: true, count: entries.length, skipped, sample: entries.slice(0, 3) })
-  } catch(e) {
-    console.error('[drawingDB] upload error:', e.message)
-    res.status(400).json({ error: e.message })
-  }
+  // Drawing DB는 별도 업로드 불필요 — 통합 Excel에 포함됨
+  return res.status(400).json({
+    error: 'Drawing DB는 별도 업로드가 필요 없습니다. "DB 파일 업로드" 버튼으로 통합 Excel을 업로드해 주세요.'
+  })
 })
 
 // ─── DELETE /api/db/plate (전체 초기화) ──────────────────────────────────────
 app.delete('/api/db/plate', (req, res) => {
+  unifiedDB = { files: [], updatedAt: null }
+  unifiedEntries = []
+  if (fs.existsSync(UNIFIED_DB_PATH))  try { fs.unlinkSync(UNIFIED_DB_PATH) }  catch(e) {}
+  if (fs.existsSync(UNIFIED_ENT_PATH)) try { fs.unlinkSync(UNIFIED_ENT_PATH) } catch(e) {}
   plateDB = { files: [], updatedAt: null }
-  if (fs.existsSync(PLATE_DB_PATH)) fs.unlinkSync(PLATE_DB_PATH)
+  if (fs.existsSync(PLATE_DB_PATH)) try { fs.unlinkSync(PLATE_DB_PATH) } catch(e) {}
   res.json({ ok: true })
 })
 
 // ─── DELETE /api/db/drawing ───────────────────────────────────────────────────
 app.delete('/api/db/drawing', (req, res) => {
-  drawingDB = { entries: [], updatedAt: null, filename: null }
-  if (fs.existsSync(DRAWING_DB_PATH)) fs.unlinkSync(DRAWING_DB_PATH)
-  res.json({ ok: true })
+  // Drawing은 unified DB에 포함됨 — unified 전체 초기화로 처리
+  if (fs.existsSync(DRAWING_DB_PATH)) try { fs.unlinkSync(DRAWING_DB_PATH) } catch(e) {}
+  res.json({ ok: true, note: 'Drawing entries are part of unified DB. Use DELETE /api/db/plate to clear all.' })
 })
 
 // ─── GET /api/db/status ───────────────────────────────────────────────────────
 app.get('/api/db/status', (req, res) => {
-  const allPlateEntries = getAllPlateEntries()
-  const plateSample = allPlateEntries.slice(0, 3).map(e => e.plateNo)
-  const drawingSample = drawingDB.entries.slice(0, 3).map(e => e.drawingFull)
+  const allPlates   = getAllPlateEntries()
+  const allDrawings = getAllDrawingEntries()
+
   res.json({
     plate: {
-      loaded: allPlateEntries.length > 0,
-      count: allPlateEntries.length,
-      fileCount: plateDB.files.length,
-      updatedAt: plateDB.updatedAt,
-      alphaCount: allPlateEntries.filter(e => e.type === 'alpha').length,
-      numericCount: allPlateEntries.filter(e => e.type === 'numeric').length,
-      sample: plateSample
+      loaded:      allPlates.length > 0,
+      count:       allPlates.length,
+      fileCount:   unifiedDB.files.length,
+      updatedAt:   unifiedDB.updatedAt,
+      alphaCount:  allPlates.filter(e => e.type === 'alpha').length,
+      numericCount:allPlates.filter(e => e.type === 'numeric').length,
+      sample:      allPlates.slice(0, 3).map(e => e.plateNo)
     },
     drawing: {
-      loaded: drawingDB.entries.length > 0,
-      count: drawingDB.entries.length,
-      updatedAt: drawingDB.updatedAt,
-      filename: drawingDB.filename,
-      sample: drawingSample
+      loaded:    allDrawings.length > 0,
+      count:     allDrawings.length,
+      updatedAt: unifiedDB.updatedAt,
+      filename:  unifiedDB.files.map(f => f.filename).join(', ') || '',
+      sample:    allDrawings.slice(0, 3).map(e => e.drawingFull)
     }
   })
 })
@@ -719,8 +611,8 @@ app.post('/api/db/rematch', (req, res) => {
     } : { matched: false, confidence: 0, method: 'no_match', plate: null, drawing: null }
 
     // status 재계산
-    const plateLoaded = getAllPlateEntries().length > 0
-    const drawingLoaded = drawingDB.entries.length > 0
+    const plateLoaded   = getAllPlateEntries().length > 0
+    const drawingLoaded = getAllDrawingEntries().length > 0
     const anyDBLoaded = plateLoaded || drawingLoaded
     let newStatus = null
     if (anyDBLoaded) {
@@ -932,9 +824,9 @@ function buildResult(parsed, method, elapsed, dbMatch = null) {
   // MANUAL  : 포맷 OK + DB 없음 or DB에 없음 → 사람이 수동 입력
   // OCR_FAIL: 포맷 2개 이상 실패         → Agentic 재시도 or 수동
   let status
-  // 실제 DB 로드 여부 = 파일 수 or entries 수로 판단 (matchWithDBs는 항상 객체 반환)
-  const plateLoaded = getAllPlateEntries().length > 0
-  const drawingLoaded = drawingDB.entries.length > 0
+  // 실제 DB 로드 여부 = unified entries 수로 판단
+  const plateLoaded   = getAllPlateEntries().length > 0
+  const drawingLoaded = getAllDrawingEntries().length > 0
   const anyDBLoaded = plateLoaded || drawingLoaded
 
   if (validCount <= 1) {
@@ -1014,18 +906,19 @@ app.post('/api/ocr/agentic', async (req, res) => {
     // Plate DB 후보군 삽입 (normalizeLines 기준으로 line1=PlateNo, line3=DrawingNo)
     let candidatesBlock = ''
     const allPlateEntriesAg = getAllPlateEntries()
-    if (allPlateEntriesAg.length > 0 || drawingDB.entries.length > 0) {
+    if (allPlateEntriesAg.length > 0 || getAllDrawingEntries().length > 0) {
       const lines = []
 
-      // Drawing DB에서 매칭되는 도면번호 찾기 (line3 = Drawing)
-      if (drawingDB.entries.length > 0 && standardResult?.line3) {
+      // Drawing DB에서 매칭되는 도면번호 찾기 (line3 = Drawing, unifiedDB)
+      const allDrawingsAg = getAllDrawingEntries()
+      if (allDrawingsAg.length > 0 && standardResult?.line3) {
         const ocr3 = (standardResult.line3 || '').toUpperCase().replace(/\s/g, '')
-        const drawMatch = drawingDB.entries.find(e => e.drawingFull === ocr3 || e.drawingBase === ocr3)
+        const drawMatch = allDrawingsAg.find(e => e.drawingFull === ocr3 || e.drawingBase === ocr3)
         if (drawMatch) {
           lines.push(`DRAWING DB MATCH: ${drawMatch.drawingFull} (Section: ${drawMatch.sectionCode}, Skirt: #${drawMatch.skirtNo})`)
           lines.push(`→ Drawing confirmed as: ${drawMatch.drawingFull}`)
         } else {
-          const top3 = drawingDB.entries
+          const top3 = allDrawingsAg
             .map(e => ({ e, score: Math.max(stringSimilarity(ocr3, e.drawingFull), stringSimilarity(ocr3, e.drawingBase)) }))
             .sort((a,b) => b.score - a.score)
             .slice(0, 3)
