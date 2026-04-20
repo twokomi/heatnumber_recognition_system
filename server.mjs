@@ -130,8 +130,9 @@ TYPE B (alt):    Line1=Drawing(8-digit only)  Line2=PlateID(numeric)  Line3=Mate
 
 ━━ EXACT CHARACTER COUNT RULES — never deviate ━━
 PlateID alpha:   [1][1][1][3]-[1][2]-[1][2]  = 6+hyphen+3+hyphen+3  e.g. B5L779-C12-A01
-  • pos1: ONLY 'A' or 'B'  • pos2: single digit  • pos3: ANY single UPPERCASE letter (A–Z, including C, K, J…)  • pos4-6: 3 digits
+  • pos1: ONLY 'A' or 'B'  • pos2: DIGIT ONLY (0–9, NEVER a letter)  • pos3: ANY single UPPERCASE letter (A–Z, including C, K, J…)  • pos4-6: 3 digits
   • seg2: 1 letter + 2 digits  • seg3: 'A' or 'B' + 2 digits
+  ⚠ pos2 WARNING: pos2 is ALWAYS a digit. If it looks like G/D/O/Q → it is 6/0. NEVER output a letter in pos2.
   ⚠ pos3 WARNING: C, K, J are valid and exist in real plates. Do NOT default to A or B — read the image pixel shape.
 PlateID numeric: [7]-[2]-[1]-[2]  e.g. 5606726-01-1-01
   • first segment MUST be exactly 7 digits
@@ -154,6 +155,9 @@ Each character = one connected dot cluster. Gap between clusters = character bou
   8 vs 3  — 8: both loops fully closed on left AND right
              3: TOP stroke is nearly STRAIGHT/flat on the left, not fully closed
   B vs 6  — B starts with vertical stroke; 6 is fully curved
+  6 vs G  — 6: fully enclosed bottom loop, top curls inward → it is a DIGIT
+             G: open arc with inward horizontal tick on right → it is a LETTER
+             ⚠ In pos2 (digit zone): ALWAYS read as 6, NEVER G.
   B vs C  — B has vertical LEFT stroke + two closed right bumps (right side is CLOSED)
              C has NO vertical left stroke; it is an open arc, right side is OPEN/missing
              → If the right side is open (gap visible), it is C. If right side is closed bumps, it is B.
@@ -179,7 +183,8 @@ TYPE B: Line1=Drawing BASE (8 digits ONLY, no hyphen)  Line2=PlateID(numeric)  L
 
 ━━ EXACT CHARACTER COUNT RULES ━━
 Alpha PlateID  [1][1][1][3]-[1][2]-[1][2]:
-  seg1 = 6 chars: pos1∈{A,B} · pos2=digit · pos3=ANY letter (A–Z, C/K/J are valid) · pos4-6=3digits
+  seg1 = 6 chars: pos1∈{A,B} · pos2=DIGIT ONLY (G→6, D→0, Q→0) · pos3=ANY letter (A–Z, C/K/J are valid) · pos4-6=3digits
+  ⚠ pos2: ALWAYS a digit. G/D/Q in pos2 position = misread → correct to 6/0/0.
   ⚠ pos3: Do NOT bias toward A/B/L just because they are common. Read pixel shapes only.
   seg2 = 3 chars: letter+2digits   seg3 = 3 chars: {A|B}+2digits
   Total chars (no hyphens) = 12
@@ -248,9 +253,10 @@ D vs 0 vs Q:
 ━━ VALIDATION BEFORE OUTPUT ━━
 1. Count characters in each segment. If count doesn't match rules above → re-read that segment.
 2. Check: alpha plate pos1 must be A or B. If you read 8/6/0/D → it is likely B or A.
-3. Check: numeric plate seg1 must be exactly 7 digits (never 6, never 8).
-4. Check: drawing seg1 must be exactly 8 digits. Section letter ∈ {B,L,M,U,W,T}.
-5. If a DB candidate matches your reading with HIGH similarity (>80%) → double-check strokes before deviating.
+3. Check: alpha plate pos2 must be a DIGIT (0–9). If you read G/D/Q → it is 6/0/0. NEVER a letter.
+4. Check: numeric plate seg1 must be exactly 7 digits (never 6, never 8).
+5. Check: drawing seg1 must be exactly 8 digits. Section letter ∈ {B,L,M,U,W,T}.
+6. If a DB candidate matches your reading with HIGH similarity (>80%) → double-check strokes before deviating.
    ⚠ EXCEPTION for pos3 (3rd char of alpha PlateID): pos3 can be ANY letter (C, K, J, etc.).
      DB may have few or no entries with that letter — that does NOT mean your reading is wrong.
      For pos3: trust your pixel-level reading OVER DB frequency bias.
