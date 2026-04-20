@@ -859,20 +859,28 @@ function validateDrawingNumber(val = '') {
  * TYPE B: line1=DrawingBase(8자리), line2=PlateNo(numeric), line3=Material(short)
  */
 function detectLayoutType(parsed) {
-  // GPT가 명시적으로 알려준 경우 우선 사용
-  if (parsed.layoutType === 'B') return 'B'
-  if (parsed.layoutType === 'A') return 'A'
-
   const l1 = (parsed.line1 || '').trim().toUpperCase().replace(/\s/g, '')
   const l2 = (parsed.line2 || '').trim().toUpperCase().replace(/\s/g, '')
   const l3 = (parsed.line3 || '').trim().toUpperCase().replace(/\s/g, '')
 
-  // TYPE B 감지: line1이 8자리 숫자 단독
-  if (/^\d{8}$/.test(l1)) return 'B'
-  // TYPE B 감지: line2가 숫자형 Plate No (7digits-...)
-  if (/^\d{7}-/.test(l2) && /^\d{8}/.test(l1)) return 'B'
-  // TYPE B 감지: line3가 재질 형태이고 line1이 드로잉처럼 생긴 경우
-  if (/S355/.test(l3) && /^\d{8}/.test(l1) && !/[BLMUWT]\d{2}$/.test(l1)) return 'B'
+  // ── TYPE B의 엄격한 조건 ──────────────────────────────────────────────────
+  // TYPE B: line1=Drawing(8자리), line2=숫자형PlateID, line3=Material(짧은형)
+  // 세 조건을 모두 충족해야만 TYPE B로 인정
+  const line1IsDrawingBase = /^\d{8}$/.test(l1)
+  const line2IsNumericPlate = /^\d{7}-\d{2}-\d{1}-\d{2}$/.test(l2)
+  const line3IsMaterial = /^S355/.test(l3)
+
+  if (line1IsDrawingBase && line2IsNumericPlate) return 'B'
+  if (line1IsDrawingBase && line3IsMaterial) return 'B'
+
+  // ── AI 선언은 검증 후 신뢰 ───────────────────────────────────────────────
+  // AI가 B라고 해도, line1이 실제 8자리 숫자가 아니면 무시
+  if (parsed.layoutType === 'B') {
+    // B 선언이 유효한지 확인: line1이 반드시 drawing base(8자리) 또는
+    // line2가 숫자형 PlateID여야 함
+    if (line1IsDrawingBase || line2IsNumericPlate) return 'B'
+    // 조건 불만족 → AI 선언 무시하고 A로 처리
+  }
 
   return 'A'
 }
@@ -1021,6 +1029,13 @@ function buildResult(parsed, method, elapsed, dbMatch = null) {
   const dv2 = validateDrawingNumber(finalDrawing)
   const validCount = [pv2.valid, mv.valid, dv2.valid].filter(Boolean).length
 
+  // ─── Layout 오판 감지 ────────────────────────────────────────────────────
+  // TYPE B로 분류됐지만 실제 내용이 유효하지 않으면 경고 추가
+  let layoutWarning = ''
+  if (layoutType === 'B' && !pv2.valid && !dv2.valid) {
+    layoutWarning = '[Layout오판 가능] TYPE B로 분류됐으나 PlateID/Drawing 모두 무효 → TYPE A였을 수 있음'
+  }
+
   // ─── OCR 판독 품질 (GPT confidence 제거 — 포맷 검증 기반) ───────────────
   // 문자 구조(개수/하이픈 위치)를 포맷 정규식으로 검증
   // good: 3개 모두 OK, partial: 1~2개 OK, poor: 모두 실패
@@ -1076,7 +1091,7 @@ function buildResult(parsed, method, elapsed, dbMatch = null) {
     confidence: ocrScore,
     difficulty: validCount === 3 ? 1 : validCount === 2 ? 4 : validCount === 1 ? 7 : 10,
     validation: { heat: pv2.valid, material: mv.valid, drawing: dv2.valid },
-    notes: parsed.notes || '',
+    notes: [parsed.notes, layoutWarning].filter(Boolean).join(' | ') || '',
     refMatch: refInfo
   }
 }
