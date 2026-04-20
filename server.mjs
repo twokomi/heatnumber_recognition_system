@@ -1037,11 +1037,11 @@ function buildResult(parsed, method, elapsed, dbMatch = null) {
       } : null
     }
 
-    // DB 결과로 보정
-    if (plateMatch?.matched && plateMatch.entry?.plateNo) {
+    // DB 결과로 보정 — DB에 있을 때만 덮어씀. 없으면 OCR 값 그대로 유지
+    if (plateMatch?.matched && plateMatch.confidence >= 1.0 && plateMatch.entry?.plateNo) {
       finalPlate = plateMatch.entry.plateNo
     }
-    if (drawingMatch?.matched && drawingMatch.entry?.drawingFull) {
+    if (drawingMatch?.matched && drawingMatch.confidence >= 1.0 && drawingMatch.entry?.drawingFull) {
       finalDrawing = drawingMatch.entry.drawingFull
     }
   }
@@ -1201,14 +1201,15 @@ app.post('/api/ocr/agentic', async (req, res) => {
       const dbStatus = standardResult.refMatch?.matched
         ? `MATCHED (conf=${(standardResult.refMatch.confidence*100).toFixed(0)}%, method=${standardResult.refMatch.method}${standardResult.refMatch.crossValidated ? ' ✓cross' : standardResult.refMatch.crossConflict ? ' ✗conflict' : ''})`
         : 'NOT MATCHED in DB'
-      hint = `Previous OCR pass result (may contain errors):
+      hint = `Previous OCR pass attempted this reading (may contain character errors):
   layoutType: ${standardResult.layoutType || 'A'}
   PlateID:    "${standardResult.line1}"
   Material:   "${standardResult.line2}"
   Drawing:    "${standardResult.line3}"
 ${pass1Info}  DB status:  ${dbStatus}
-→ Re-examine the IMAGE. If DB shows a close candidate, prefer exact DB string over your reading.
-→ Correct any misread characters based on stroke-level analysis.`
+⚠ IMPORTANT: The previous pass values above are REFERENCE ONLY — they may have misread characters.
+  Do NOT copy them into your output. Re-read the IMAGE from scratch using stroke-level analysis.
+  Your JSON output must reflect what you actually see in the image, not the previous pass values.`
     }
 
     // ── DB 후보군: standardResult의 dbHintsBlock 재사용 or 독립 생성 ──────
