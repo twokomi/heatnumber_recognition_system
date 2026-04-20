@@ -551,9 +551,9 @@
         <img id="modal-img" src="" alt="Steel plate">
         <div class="final-result">
           <h3><i class="fas fa-check-circle" style="margin-right:6px"></i>Final OCR Result</h3>
-          <div class="result-row"><div class="result-num">1</div><div class="result-val" id="modal-final-1">—</div><span class="result-check" id="modal-check-1"></span></div>
-          <div class="result-row"><div class="result-num">2</div><div class="result-val" id="modal-final-2">—</div><span class="result-check" id="modal-check-2"></span></div>
-          <div class="result-row"><div class="result-num">3</div><div class="result-val" id="modal-final-3">—</div><span class="result-check" id="modal-check-3"></span></div>
+          <div class="result-row"><div class="result-num" id="modal-label-1" style="font-size:0.62rem;width:58px;min-width:58px">Heat No</div><div class="result-val" id="modal-final-1">—</div><span class="result-check" id="modal-check-1"></span></div>
+          <div class="result-row"><div class="result-num" id="modal-label-2" style="font-size:0.62rem;width:58px;min-width:58px">Material</div><div class="result-val" id="modal-final-2">—</div><span class="result-check" id="modal-check-2"></span></div>
+          <div class="result-row"><div class="result-num" id="modal-label-3" style="font-size:0.62rem;width:58px;min-width:58px">Drawing</div><div class="result-val" id="modal-final-3">—</div><span class="result-check" id="modal-check-3"></span></div>
         </div>
         <!-- Reference DB 매칭 블록 -->
         <div id="modal-ref-block" style="display:none"></div>
@@ -923,7 +923,7 @@ function renderGrid() {
       <div style="flex:1;min-width:0">
         <div class="card-filename">${img.filename}</div>
         <div class="card-lines">
-          ${[1,2,3].map(n=>`<div class="card-line"><span class="line-num">${n}</span><span class="line-value">${r?.['line'+n]||'—'}</span></div>`).join('')}
+          ${['Heat No','Material','Drawing'].map((label,i)=>`<div class="card-line"><span class="line-num" style="font-size:0.58rem;width:52px;flex-shrink:0">${label}</span><span class="line-value">${r?.['line'+(i+1)]||'—'}</span></div>`).join('')}
         </div>
       </div>
       <div class="card-badges">
@@ -934,6 +934,7 @@ function renderGrid() {
         ${dbChip}
         ${r?.ocrQuality === 'partial' ? '<span class="badge badge-ocr-partial" style="font-size:0.62rem">OCR 부분</span>' : ''}
         ${r?.ocrQuality === 'poor' ? '<span class="badge badge-ocr-poor" style="font-size:0.62rem">OCR 불량</span>' : ''}
+        ${r?.layoutType === 'B' ? '<span class="badge" style="background:rgba(88,166,255,0.15);color:#58a6ff;border:1px solid rgba(88,166,255,0.3);font-size:0.6rem">TYPE B</span>' : ''}
         ${img.agenticResult ? '<span class="badge badge-agentic" style="font-size:0.62rem">Agentic</span>' : ''}
       </div>
     </div>`
@@ -1001,13 +1002,21 @@ function populateModal(idx) {
   if (quality) {
     badgesHTML += ocrQualityBadgeHTML(quality)
   }
+  const layout = r?.layoutType
+  if (layout === 'B') badgesHTML += `<span class="badge" style="background:rgba(88,166,255,0.15);color:#58a6ff;border:1px solid rgba(88,166,255,0.3);font-size:0.65rem">📋 TYPE B · Drawing→Heat→Material</span>`
+  else if (layout) badgesHTML += `<span class="badge" style="background:rgba(63,185,80,0.1);color:#3fb950;border:1px solid rgba(63,185,80,0.2);font-size:0.65rem">TYPE A</span>`
   if (img.agenticResult) badgesHTML += '<span class="badge badge-agentic">Agentic Vision</span>'
   document.getElementById('modal-badges').innerHTML = badgesHTML
 
+  // 모달 라인 레이블 업데이트 (정규화된 순서: Heat / Material / Drawing)
+  const lineLabels = ['Heat No', 'Material', 'Drawing No']
   ;[1,2,3].forEach(n=>{
     document.getElementById('modal-final-'+n).textContent = r?.['line'+n]||'—'
     const v=r?.validation
     if(v){const ok=n===1?v.heat:n===2?v.material:v.drawing; document.getElementById('modal-check-'+n).innerHTML=ok?'<span class="check-ok">✓</span>':'<span class="check-fail">✗</span>'}
+    // 레이블 업데이트
+    const labelEl = document.getElementById('modal-label-'+n)
+    if (labelEl) labelEl.textContent = lineLabels[n-1]
   })
 
   // Reference DB 매칭 블록 (새 구조: plate + drawing 분리)

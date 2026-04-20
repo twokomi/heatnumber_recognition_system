@@ -114,9 +114,25 @@
       background: rgba(255,255,255,0.04); border-radius: 8px;
       padding: 10px 12px;
     }
-    .ocr-num { font-size: 0.65rem; color: var(--sub); font-weight: 700; width: 14px; flex-shrink: 0; }
+    .ocr-num { font-size: 0.6rem; color: var(--sub); font-weight: 700; width: 50px; flex-shrink: 0; line-height: 1.3; }
+    .ocr-num .field-label { font-size: 0.58rem; color: var(--sub); opacity: 0.7; display: block; }
     .ocr-val { font-size: 1rem; font-weight: 600; font-family: monospace; letter-spacing: 0.03em; flex: 1; }
     .ocr-check { font-size: 0.85rem; }
+
+    /* TYPE B 레이아웃 안내 */
+    .layout-info {
+      font-size: 0.68rem; color: var(--blue); background: rgba(88,166,255,0.08);
+      border: 1px solid rgba(88,166,255,0.2); border-radius: 6px;
+      padding: 5px 10px; display: flex; align-items: center; gap: 5px;
+    }
+
+    /* TYPE 배지 */
+    .type-badge {
+      font-size: 0.62rem; padding: 2px 7px; border-radius: 4px;
+      font-weight: 700; letter-spacing: 0.02em;
+    }
+    .type-a { background: rgba(63,185,80,0.12); color: var(--green); border: 1px solid rgba(63,185,80,0.25); }
+    .type-b { background: rgba(88,166,255,0.15); color: var(--blue); border: 1px solid rgba(88,166,255,0.3); }
     .ok  { color: var(--green); }
     .fail{ color: var(--red); }
 
@@ -349,12 +365,25 @@ function renderItem(item) {
     OCR_FAIL: `<span class="status-badge badge-fail">⚫ OCR FAIL</span>`
   }[status] || ''
 
+  // TYPE A/B 배지 (항상 표시)
+  const isTypeB = r.layoutType === 'B'
+  const layoutBadge = isTypeB
+    ? `<span class="type-badge type-b">TYPE B</span>`
+    : `<span class="type-badge type-a">TYPE A</span>`
+
+  // OCR 라인 — 항상 정규화된 순서 (Heat / Material / Drawing)
+  // 단, 원본 이미지에서 어떤 순서로 찍혔는지는 layoutBadge로 표시
   const v = r.validation || {}
   const lines = [
-    { n:1, val: r.line1||'—', ok: v.heat },
-    { n:2, val: r.line2||'—', ok: v.material },
-    { n:3, val: r.line3||'—', ok: v.drawing }
+    { label: 'Heat No',   val: r.line1||'—', ok: v.heat },
+    { label: 'Material',  val: r.line2||'—', ok: v.material },
+    { label: 'Drawing',   val: r.line3||'—', ok: v.drawing }
   ]
+
+  // TYPE B 안내 메시지 (원본 이미지 순서가 다름을 알림)
+  const layoutInfo = isTypeB
+    ? `<div class="layout-info">📋 원본: Drawing → Heat → Material 순서 (자동 정규화됨)</div>`
+    : ''
 
   // DB 매칭 블록
   const ref = r.refMatch
@@ -400,12 +429,16 @@ function renderItem(item) {
     <div class="result-body">
       <div class="status-row">
         ${badge}
-        <span class="fname">${item.filename}</span>
+        <div style="display:flex;align-items:center;gap:6px">
+          ${layoutBadge}
+          <span class="fname">${item.filename}</span>
+        </div>
       </div>
+      ${layoutInfo}
       <div class="ocr-lines">
         ${lines.map(l => `
           <div class="ocr-line">
-            <span class="ocr-num">${l.n}</span>
+            <span class="ocr-num">${l.label}</span>
             <span class="ocr-val">${escHtml(l.val)}</span>
             <span class="ocr-check ${l.ok?'ok':'fail'}">${l.ok?'✓':'✗'}</span>
           </div>`).join('')}

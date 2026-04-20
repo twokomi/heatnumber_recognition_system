@@ -103,50 +103,70 @@ loadDBs()
 const DEFAULT_PROMPTS = {
   standard: `You are an OCR specialist for steel plate dot-matrix stamped text.
 
-Read EXACTLY 3 lines from the image:
+There are TWO layout types. Detect which type and read accordingly:
 
-LINE 1 - Plate Number (Heat Number):
-  Two formats exist:
+━━ TYPE A (most common) ━━
+  Line 1: Plate/Heat Number
+  Line 2: Material grade
+  Line 3: Drawing number
+
+━━ TYPE B (new format) ━━
+  Line 1: Drawing number (8 digits only, no hyphen)
+  Line 2: Heat/Plate Number (numeric format)
+  Line 3: Material grade (short form, e.g. "S355 J0")
+
+FIELD FORMATS:
+
+Plate Number (Heat Number):
   Format A (alphanumeric): [A|B][digit][LETTER][3digits]-[LETTER][2digits]-A[2digits]
-    Examples: B5L779-C12-A01, A5H217-C13-A01, B5G610-C14-A02
-    IMPORTANT: First character is ONLY 'A' or 'B' (never 8, 6, 0)
+    Examples: B5L779-C12-A01, A5H217-C13-A01
+    IMPORTANT: First char is ONLY 'A' or 'B'
   Format B (numeric): [7digits]-[2digits]-[1digit]-[2digits]
-    Examples: 5606726-01-1-01, 5606727-02-1-03
+    Examples: 5606726-01-1-01, 5600171-05-1-02
 
-LINE 2 - Material grade + manufacturer:
-  Format: S355J0+N or S355J2+N  then  SSAB
-  Example: S355J0+N   SSAB
+Material grade:
+  Long form:  S355J0+N SSAB  or  S355J2+N SSAB
+  Short form: S355J0  or  S355 J0  or  S355JO  (no SSAB)
 
-LINE 3 - Drawing number:
-  Format: exactly 8 digits + hyphen + [B,L,M,U,W,T] + [01-11]
-  Example: 29308316-B01, 29311971-T11
+Drawing number:
+  With position:   8digits-[B,L,M,U,W,T][01-11]   e.g. 29308316-B01
+  Without position (TYPE B line1): 8 digits only   e.g. 29308308
 
-Return ONLY valid JSON (no markdown, no explanation):
-{"line1":"...","line2":"...","line3":"...","confidence":0.0,"notes":"brief quality note"}`,
+Return ONLY valid JSON:
+{"line1":"...","line2":"...","line3":"...","layoutType":"A" or "B","confidence":0.0,"notes":"brief quality note"}`,
 
   agentic: `You are an expert OCR agent for industrial steel plate markings (타각/도트매트릭스).
 {{HINT}}
 {{CANDIDATES}}
 
-STRICT RULES:
+There are TWO layout types:
 
-LINE 1 - Plate Number (Heat Number): Two formats:
-  Format A (alphanumeric): [A|B][1digit][1LETTER][3digits]-[1LETTER][2digits]-A[2digits]
-    - ONLY 'A' or 'B' as first char (NOT 8/6/0 — common misread in dot-matrix)
-    - Valid examples: B5L779-C12-A01, A5G334-A30-A01, B5I552-D15-A01
+━━ TYPE A (standard) ━━
+  line1 = Plate/Heat Number (alphanumeric or numeric format)
+  line2 = Material grade (S355J0+N SSAB or S355J2+N SSAB)
+  line3 = Drawing number (8digits-LETTER+2digits)
+
+━━ TYPE B (alternate) ━━
+  line1 = Drawing number base (8 digits ONLY, no hyphen suffix)
+  line2 = Plate/Heat Number (numeric: 7digits-2d-1d-2d)
+  line3 = Material grade (short: S355J0 or S355 J0, may lack SSAB)
+  Detection: if first line looks like a standalone 8-digit number → TYPE B
+
+FIELD RULES:
+Plate Number:
+  Format A (alpha): [A|B][1digit][LETTER][3digits]-[LETTER][2digits]-A[2digits]
+    First char MUST be A or B (not 8/6/0)
   Format B (numeric): [7digits]-[2digits]-[1digit]-[2digits]
-    - Examples: 5606726-01-1-01, 5606727-02-1-03
 
-LINE 2 - Steel grade: must be "S355J0+N" or "S355J2+N" followed by "SSAB"
+Material: S355J0+N, S355J2+N, S355J0, S355 J0, S355JO — with or without SSAB
 
-LINE 3 - Drawing number: exactly 8 digits + "-" + one of [B,L,M,U,W,T] + two digits 01-11
-  - e.g. 29308316-B01, 29303342-B03, 29308299-T03
+Drawing: 8digits + optional "-" + [B,L,M,U,W,T] + [01-11]
 
-The image may be rotated — read from correct orientation.
-Dot-matrix characters: 0 vs O, 1 vs I, 8 vs B, 5 vs S — choose based on position rules.
+Dot-matrix: 0↔O, 1↔I, 8↔B, 5↔S — use position context.
+Image may be rotated.
 
 Return ONLY JSON:
-{"line1":"...","line2":"...","line3":"...","confidence":0.0,"notes":"detailed analysis of ambiguous chars"}`
+{"line1":"...","line2":"...","line3":"...","layoutType":"A" or "B","confidence":0.0,"notes":"analysis"}`
 }
 
 let runtimePrompts = { ...DEFAULT_PROMPTS }
@@ -394,13 +414,27 @@ function matchWithDBs(ocrLine1, ocrLine3) {
     if (found) {
       result.drawingMatch = { matched: true, entry: found, confidence: 1.0, method: 'drawing_exact' }
     } else {
-      // 전략 2: drawingBase만 매칭
-      const m = ocr3.match(/^(\d{8})-([BLMUWT])(\d{2})$/)
-      if (m) {
-        const [, base, code, skirt] = m
-        const byBase = drawingDB.entries.find(e => e.drawingBase === base && e.sectionCode === code)
-        if (byBase) {
-          result.drawingMatch = { matched: true, entry: byBase, confidence: 0.95, method: 'drawing_base_match' }  // 기본번호 일치
+      // 전략 1B: TYPE B — 8자리 drawingBase만 있는 경우 (원본 이미지가 TYPE B 형식)
+      if (/^\d{8}$/.test(ocr3)) {
+        const byBase = drawingDB.entries.filter(e => e.drawingBase === ocr3)
+        if (byBase.length === 1) {
+          // 하나만 매칭되면 확정
+          result.drawingMatch = { matched: true, entry: byBase[0], confidence: 1.0, method: 'drawing_base_exact' }
+        } else if (byBase.length > 1) {
+          // 여러 개 매칭 — 가장 첫 번째를 반환하되 confidence는 0.9
+          result.drawingMatch = { matched: true, entry: byBase[0], allByBase: byBase, confidence: 0.9, method: 'drawing_base_multi' }
+        }
+      }
+
+      if (!result.drawingMatch) {
+        // 전략 2: drawingBase+sectionCode 매칭 (full form에서 base+code 추출)
+        const m = ocr3.match(/^(\d{8})-([BLMUWT])(\d{2})$/)
+        if (m) {
+          const [, base, code, skirt] = m
+          const byBase = drawingDB.entries.find(e => e.drawingBase === base && e.sectionCode === code)
+          if (byBase) {
+            result.drawingMatch = { matched: true, entry: byBase, confidence: 0.95, method: 'drawing_base_match' }  // 기본번호 일치
+          }
         }
       }
 
@@ -722,11 +756,67 @@ function validatePlateNumber(val = '') {
 }
 function validateMaterial(val = '') {
   const cleaned = val.toUpperCase().replace(/\s+/g, ' ').trim()
-  return { valid: /S355J[02]\+N/.test(cleaned) && cleaned.includes('SSAB'), corrected: cleaned }
+  // Long form: S355J0+N SSAB / S355J2+N SSAB
+  const longForm = /S355J[02]\+N/.test(cleaned) && cleaned.includes('SSAB')
+  // Short form: S355J0 / S355 J0 / S355JO (TYPE B — no SSAB)
+  const shortForm = /S355\s?J[02O]/.test(cleaned)
+  return { valid: longForm || shortForm, corrected: cleaned, form: longForm ? 'long' : shortForm ? 'short' : 'unknown' }
 }
 function validateDrawingNumber(val = '') {
   const cleaned = val.toUpperCase().replace(/\s/g, '')
-  return { valid: /^\d{8}-[BLMUWT](0[1-9]|1[01])$/.test(cleaned), corrected: cleaned }
+  // Full form: 29308316-B01
+  const fullValid = /^\d{8}-[BLMUWT](0[1-9]|1[01])$/.test(cleaned)
+  // Base only (TYPE B line1): 29308308
+  const baseValid = /^\d{8}$/.test(cleaned)
+  return { valid: fullValid || baseValid, corrected: cleaned, baseOnly: baseValid && !fullValid }
+}
+
+/**
+ * GPT가 반환한 layoutType 또는 줄 내용으로 타입 감지
+ * TYPE A: line1=PlateNo, line2=Material, line3=DrawingNo
+ * TYPE B: line1=DrawingBase(8자리), line2=PlateNo(numeric), line3=Material(short)
+ */
+function detectLayoutType(parsed) {
+  // GPT가 명시적으로 알려준 경우 우선 사용
+  if (parsed.layoutType === 'B') return 'B'
+  if (parsed.layoutType === 'A') return 'A'
+
+  const l1 = (parsed.line1 || '').trim().toUpperCase().replace(/\s/g, '')
+  const l2 = (parsed.line2 || '').trim().toUpperCase().replace(/\s/g, '')
+  const l3 = (parsed.line3 || '').trim().toUpperCase().replace(/\s/g, '')
+
+  // TYPE B 감지: line1이 8자리 숫자 단독
+  if (/^\d{8}$/.test(l1)) return 'B'
+  // TYPE B 감지: line2가 숫자형 Plate No (7digits-...)
+  if (/^\d{7}-/.test(l2) && /^\d{8}/.test(l1)) return 'B'
+  // TYPE B 감지: line3가 재질 형태이고 line1이 드로잉처럼 생긴 경우
+  if (/S355/.test(l3) && /^\d{8}/.test(l1) && !/[BLMUWT]\d{2}$/.test(l1)) return 'B'
+
+  return 'A'
+}
+
+/**
+ * 감지된 타입에 따라 줄 순서를 표준(Heat/Material/Drawing)으로 정규화
+ * 반환: { plateNo, material, drawingNo, layoutType }
+ */
+function normalizeLines(parsed) {
+  const layoutType = detectLayoutType(parsed)
+  if (layoutType === 'B') {
+    // TYPE B: line1=DrawingBase, line2=PlateNo, line3=Material
+    return {
+      plateNo: parsed.line2 || '',
+      material: parsed.line3 || '',
+      drawingNo: parsed.line1 || '',   // 8자리만 — drawing_base로 매칭
+      layoutType: 'B'
+    }
+  }
+  // TYPE A (기본): line1=PlateNo, line2=Material, line3=DrawingNo
+  return {
+    plateNo: parsed.line1 || '',
+    material: parsed.line2 || '',
+    drawingNo: parsed.line3 || '',
+    layoutType: 'A'
+  }
 }
 function calcDifficulty(confidence = 0) {
   if (confidence >= 0.95) return 1
@@ -779,12 +869,19 @@ function parseOCR(raw) {
 }
 
 function buildResult(parsed, method, elapsed, dbMatch = null) {
-  const pv = validatePlateNumber(parsed.line1)
-  const mv = validateMaterial(parsed.line2)
-  const dv = validateDrawingNumber(parsed.line3)
+  // ─── 레이아웃 타입 감지 및 줄 정규화 ─────────────────────────────────────
+  // TYPE A: line1=PlateNo, line2=Material, line3=DrawingNo  (기존 형태)
+  // TYPE B: line1=DrawingBase, line2=PlateNo, line3=Material (새 형태)
+  const norm = normalizeLines(parsed)
+  const { layoutType } = norm
 
-  let finalLine1 = pv.corrected || parsed.line1 || ''
-  let finalLine3 = dv.corrected || parsed.line3 || ''
+  const pv = validatePlateNumber(norm.plateNo)
+  const mv = validateMaterial(norm.material)
+  const dv = validateDrawingNumber(norm.drawingNo)
+
+  let finalPlate = pv.corrected || norm.plateNo || ''
+  let finalDrawing = dv.corrected || norm.drawingNo || ''
+  let finalMaterial = mv.corrected || norm.material || ''
   let refInfo = null
 
   if (dbMatch) {
@@ -813,15 +910,15 @@ function buildResult(parsed, method, elapsed, dbMatch = null) {
 
     // DB 결과로 보정
     if (plateMatch?.matched && plateMatch.entry?.plateNo) {
-      finalLine1 = plateMatch.entry.plateNo
+      finalPlate = plateMatch.entry.plateNo
     }
     if (drawingMatch?.matched && drawingMatch.entry?.drawingFull) {
-      finalLine3 = drawingMatch.entry.drawingFull
+      finalDrawing = drawingMatch.entry.drawingFull
     }
   }
 
-  const pv2 = validatePlateNumber(finalLine1)
-  const dv2 = validateDrawingNumber(finalLine3)
+  const pv2 = validatePlateNumber(finalPlate)
+  const dv2 = validateDrawingNumber(finalDrawing)
   const validCount = [pv2.valid, mv.valid, dv2.valid].filter(Boolean).length
 
   // ─── OCR 판독 품질 (GPT confidence 제거 — 포맷 검증 기반) ───────────────
@@ -867,13 +964,14 @@ function buildResult(parsed, method, elapsed, dbMatch = null) {
 
   return {
     method, elapsed,
-    line1: finalLine1,
-    line2: mv.corrected || parsed.line2 || '',
-    line3: finalLine3,
-    status,                          // 'AUTO_OK' | 'REVIEW' | 'MANUAL' | 'OCR_FAIL'
-    ocrQuality,                      // 'good' | 'partial' | 'poor'
-    ocrScore,                        // 0 | 0.33 | 0.67 | 1.0
-    confidence: ocrScore,            // 하위호환 (기존 코드 참조용, 의미는 ocrScore와 동일)
+    line1: finalPlate,                 // 항상 Plate No (Heat No)
+    line2: finalMaterial,              // 항상 재질 스펙
+    line3: finalDrawing,               // 항상 Drawing No
+    layoutType,                        // 'A' | 'B' — 원본 이미지 레이아웃 타입
+    status,                            // 'AUTO_OK' | 'REVIEW' | 'MANUAL' | 'OCR_FAIL'
+    ocrQuality,                        // 'good' | 'partial' | 'poor'
+    ocrScore,                          // 0 | 0.33 | 0.67 | 1.0
+    confidence: ocrScore,
     difficulty: validCount === 3 ? 1 : validCount === 2 ? 4 : validCount === 1 ? 7 : 10,
     validation: { heat: pv2.valid, material: mv.valid, drawing: dv2.valid },
     notes: parsed.notes || '',
@@ -891,7 +989,9 @@ app.post('/api/ocr/standard', async (req, res) => {
     const raw = await callVision(imageBase64, runtimePrompts.standard, 'gpt-4o-mini')
     const parsed = parseOCR(raw)
 
-    const dbMatch = matchWithDBs(parsed.line1, parsed.line3)
+    // normalizeLines로 정규화 후 매칭
+    const norm = normalizeLines(parsed)
+    const dbMatch = matchWithDBs(norm.plateNo, norm.drawingNo)
 
     res.json(buildResult(parsed, 'Standard (gpt-4o-mini)', `${((Date.now()-t0)/1000).toFixed(1)}s`, dbMatch))
   } catch (e) {
@@ -908,25 +1008,25 @@ app.post('/api/ocr/agentic', async (req, res) => {
     if (!imageBase64) return res.status(400).json({ error: 'imageBase64 required' })
 
     const hint = standardResult
-      ? `Previous OCR pass read: line1="${standardResult.line1}", line2="${standardResult.line2}", line3="${standardResult.line3}". Verify and correct if needed.`
+      ? `Previous OCR pass (layoutType=${standardResult.layoutType||'A'}): Heat/Plate="${standardResult.line1}", Material="${standardResult.line2}", Drawing="${standardResult.line3}". These are already normalized. Verify and correct if needed.`
       : ''
 
-    // Plate DB 후보군 삽입
+    // Plate DB 후보군 삽입 (normalizeLines 기준으로 line1=PlateNo, line3=DrawingNo)
     let candidatesBlock = ''
     const allPlateEntriesAg = getAllPlateEntries()
     if (allPlateEntriesAg.length > 0 || drawingDB.entries.length > 0) {
       const lines = []
 
-      // Drawing DB에서 매칭되는 도면번호 찾기
+      // Drawing DB에서 매칭되는 도면번호 찾기 (line3 = Drawing)
       if (drawingDB.entries.length > 0 && standardResult?.line3) {
         const ocr3 = (standardResult.line3 || '').toUpperCase().replace(/\s/g, '')
-        const drawMatch = drawingDB.entries.find(e => e.drawingFull === ocr3)
+        const drawMatch = drawingDB.entries.find(e => e.drawingFull === ocr3 || e.drawingBase === ocr3)
         if (drawMatch) {
           lines.push(`DRAWING DB MATCH: ${drawMatch.drawingFull} (Section: ${drawMatch.sectionCode}, Skirt: #${drawMatch.skirtNo})`)
-          lines.push(`→ LINE 3 confirmed as: ${drawMatch.drawingFull}`)
+          lines.push(`→ Drawing confirmed as: ${drawMatch.drawingFull}`)
         } else {
           const top3 = drawingDB.entries
-            .map(e => ({ e, score: stringSimilarity(ocr3, e.drawingFull) }))
+            .map(e => ({ e, score: Math.max(stringSimilarity(ocr3, e.drawingFull), stringSimilarity(ocr3, e.drawingBase)) }))
             .sort((a,b) => b.score - a.score)
             .slice(0, 3)
           if (top3[0]?.score >= 0.6) {
@@ -936,7 +1036,7 @@ app.post('/api/ocr/agentic', async (req, res) => {
         }
       }
 
-      // Plate DB에서 유사한 Plate Number 후보 (멀티파일 집계)
+      // Plate DB에서 유사한 Plate Number 후보 (line1 = PlateNo)
       if (allPlateEntriesAg.length > 0 && standardResult?.line1) {
         const ocr1 = (standardResult.line1 || '').toUpperCase().replace(/\s/g, '')
         const topPlates = allPlateEntriesAg
@@ -944,9 +1044,9 @@ app.post('/api/ocr/agentic', async (req, res) => {
           .sort((a,b) => b.score - a.score)
           .slice(0, 8)
         if (topPlates.length > 0 && topPlates[0].score >= 0.5) {
-          lines.push(`\nPLATE DB CANDIDATES for LINE 1 (top matches):`)
+          lines.push(`\nPLATE DB CANDIDATES for Plate/Heat Number (top matches):`)
           topPlates.forEach(({ e, score }) => lines.push(`  ${e.plateNo} (Heat: ${e.heatNo}, ${(score*100).toFixed(0)}% match)`))
-          lines.push(`→ LINE 1 should be one of the above plate numbers.`)
+          lines.push(`→ Plate/Heat Number should be one of the above.`)
         }
       }
 
@@ -962,7 +1062,9 @@ app.post('/api/ocr/agentic', async (req, res) => {
     const raw = await callVision(imageBase64, prompt, 'gpt-4o')
     const parsed = parseOCR(raw)
 
-    const dbMatch = matchWithDBs(parsed.line1, parsed.line3)
+    // normalizeLines로 정규화 후 매칭
+    const norm = normalizeLines(parsed)
+    const dbMatch = matchWithDBs(norm.plateNo, norm.drawingNo)
 
     res.json(buildResult(parsed, 'Agentic Vision (gpt-4o)', `${((Date.now()-t0)/1000).toFixed(1)}s`, dbMatch))
   } catch (e) {
