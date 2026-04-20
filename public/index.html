@@ -433,44 +433,6 @@
         <div id="plate-upload-success" class="success-box" style="display:none;margin-top:6px"></div>
       </div>
 
-      <!-- ── DB2: Drawing Number DB ── -->
-      <div style="background:rgba(188,140,255,0.04);border:1px solid rgba(188,140,255,0.2);border-radius:10px;padding:16px">
-        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px">
-          <div>
-            <p style="font-size:0.88rem;font-weight:700;color:var(--purple)"><i class="fas fa-drafting-compass" style="margin-right:6px"></i>DB2 — Drawing Number DB <span style="font-size:0.7rem;font-weight:400;color:var(--text-secondary)">(Line 3: Drawing Number)</span></p>
-            <p style="font-size:0.72rem;color:var(--text-secondary);margin-top:3px">컬럼 D (Skirt No) · F (Section Code) · G (Drawing No) 사용</p>
-          </div>
-          <div style="display:flex;align-items:center;gap:8px">
-            <span id="drawing-db-badge" class="ref-db-status ref-db-empty"><i class="fas fa-circle" style="font-size:0.55rem"></i>&nbsp;미등록</span>
-            <button onclick="clearDrawingDB()" title="DB2 초기화" style="padding:4px 8px;font-size:0.7rem;background:rgba(248,81,73,0.1);border:1px solid rgba(248,81,73,0.3);color:#f85149;border-radius:4px;cursor:pointer">
-              <i class="fas fa-trash"></i>
-            </button>
-          </div>
-        </div>
-
-        <!-- 컬럼 안내 -->
-        <div style="background:rgba(139,148,158,0.06);border-radius:6px;padding:10px 12px;margin-bottom:12px;font-size:0.72rem;color:var(--text-secondary)">
-          <p style="margin-bottom:4px">📌 사용 컬럼:</p>
-          <p>• 컬럼 <code style="background:rgba(188,140,255,0.1);padding:1px 5px;border-radius:3px;color:var(--purple)">D</code> — Skirt Number (예: u02 → 02)</p>
-          <p style="margin-top:3px">• 컬럼 <code style="background:rgba(188,140,255,0.1);padding:1px 5px;border-radius:3px;color:var(--purple)">F</code> — Section Code (B/L/M/U/W/T)</p>
-          <p style="margin-top:3px">• 컬럼 <code style="background:rgba(188,140,255,0.1);padding:1px 5px;border-radius:3px;color:var(--purple)">G</code> — Drawing Number (8자리, 예: 29311969)</p>
-          <p style="margin-top:3px">→ 조합 예시: <code>29311969-U02</code></p>
-        </div>
-
-        <div id="drawing-db-info" style="font-size:0.75rem;color:var(--text-secondary);margin-bottom:10px"></div>
-
-        <!-- Excel 업로드 -->
-        <div class="ref-dropzone" id="drawing-dropzone">
-          <input type="file" id="drawing-file-input" accept=".xlsx,.xls">
-          <i class="fas fa-file-excel" style="font-size:2rem;color:var(--purple);margin-bottom:8px;display:block"></i>
-          <p style="font-size:0.85rem;color:var(--text-secondary)"><strong style="color:var(--purple)">Excel 파일 선택</strong> 또는 드래그 앤 드롭</p>
-          <p style="font-size:0.72rem;color:var(--text-secondary);margin-top:4px">.xlsx / .xls 지원 · D=Skirt, F=Section, G=Drawing</p>
-        </div>
-        <div id="drawing-upload-status" style="font-size:0.75rem;color:var(--text-secondary);margin-top:8px;min-height:18px"></div>
-        <div id="drawing-upload-error" class="error-box" style="display:none;margin-top:6px"></div>
-        <div id="drawing-upload-success" class="success-box" style="display:none;margin-top:6px"></div>
-      </div>
-
     </div>
 
   </div>
@@ -1288,11 +1250,9 @@ document.addEventListener('keydown', e => {
 checkApiStatus()
 loadDBStatus()  // 내부에서 loadPlateFileList()도 호출됨
 
-// ── Reference DB (Plate DB 멀티파일 + Drawing DB 단일파일) ──────────────────
+// ── Reference DB (Plate DB 업로드) ────────────────────────────────────────
 const plateFileInput = document.getElementById('plate-file-input')
 const plateDropzone = document.getElementById('plate-dropzone')
-const drawingFileInput = document.getElementById('drawing-file-input')
-const drawingDropzone = document.getElementById('drawing-dropzone')
 
 // ── Plate DB: 멀티파일 업로드 ─────────────────────────────────────────────────
 plateFileInput.addEventListener('change', e => {
@@ -1403,96 +1363,30 @@ async function clearPlateDB() {
   document.getElementById('plate-upload-success').style.display = 'none'
 }
 
-// ── Drawing DB: 단일파일 ───────────────────────────────────────────────────────
-drawingFileInput.addEventListener('change', e => { if(e.target.files[0]) uploadDrawingFile(e.target.files[0]) })
-drawingDropzone.addEventListener('dragover', e => { e.preventDefault(); drawingDropzone.classList.add('dragover') })
-drawingDropzone.addEventListener('dragleave', () => drawingDropzone.classList.remove('dragover'))
-drawingDropzone.addEventListener('drop', e => {
-  e.preventDefault(); drawingDropzone.classList.remove('dragover')
-  const f = e.dataTransfer.files[0]
-  if(f && /\.(xlsx|xls)$/i.test(f.name)) uploadDrawingFile(f)
-})
-
-async function uploadDrawingFile(file) {
-  const statusEl = document.getElementById('drawing-upload-status')
-  const errEl = document.getElementById('drawing-upload-error')
-  const sucEl = document.getElementById('drawing-upload-success')
-  errEl.style.display = 'none'; sucEl.style.display = 'none'
-  statusEl.innerHTML = '<span class="spinner"></span> 업로드 중...'
-
-  const formData = new FormData()
-  formData.append('file', file)
-
-  try {
-    const res = await fetch('/api/db/drawing/upload', { method: 'POST', body: formData })
-    const data = await res.json()
-    if (data.ok) {
-      let msg = `✓ ${data.count.toLocaleString()}개 도면번호 등록완료`
-      if (data.skipped > 0) msg += ` / ${data.skipped}행 스킵`
-      if (data.sample?.length) {
-        msg += `<br>샘플: ${data.sample.map(e => `<code style="background:rgba(188,140,255,0.1);padding:1px 4px;border-radius:2px">${e.drawingFull}</code>`).join(', ')}`
-      }
-      sucEl.innerHTML = msg; sucEl.style.display = 'block'; statusEl.textContent = ''
-      loadDBStatus()
-    } else {
-      errEl.textContent = '오류: ' + data.error; errEl.style.display = 'block'; statusEl.textContent = ''
-    }
-  } catch(e) { errEl.textContent = '오류: ' + e.message; errEl.style.display = 'block'; statusEl.textContent = '' }
-}
-
-async function clearDrawingDB() {
-  if (!confirm('Drawing Number DB를 초기화할까요?')) return
-  await fetch('/api/db/drawing', { method: 'DELETE' })
-  loadDBStatus()
-  document.getElementById('drawing-upload-success').style.display = 'none'
-}
-
 // ── DB 상태 전체 갱신 ─────────────────────────────────────────────────────────
 async function loadDBStatus() {
   try {
     const res = await fetch('/api/db/status')
     const data = await res.json()
 
-    // Plate DB 배지
+    // Plate DB 배지 (도면 수 포함)
     const plateBadge = document.getElementById('plate-db-badge')
     if (plateBadge) {
       if (data.plate.loaded) {
         plateBadge.className = 'ref-db-status ref-db-loaded'
-        plateBadge.innerHTML = `<i class="fas fa-circle" style="font-size:0.55rem"></i>&nbsp;${data.plate.fileCount}개 파일 / ${data.plate.count.toLocaleString()}개`
+        plateBadge.innerHTML = `<i class="fas fa-circle" style="font-size:0.55rem"></i>&nbsp;${data.plate.fileCount}개 파일 / ${data.plate.count.toLocaleString()}개 (도면 ${data.plate.drawingCount || 0}종)`
       } else {
         plateBadge.className = 'ref-db-status ref-db-empty'
         plateBadge.innerHTML = `<i class="fas fa-circle" style="font-size:0.55rem"></i>&nbsp;미등록`
       }
     }
 
-    // Drawing DB 배지
-    const drawingBadge = document.getElementById('drawing-db-badge')
-    const drawingInfo = document.getElementById('drawing-db-info')
-    if (drawingBadge) {
-      if (data.drawing.loaded) {
-        drawingBadge.className = 'ref-db-status ref-db-loaded'
-        drawingBadge.innerHTML = `<i class="fas fa-circle" style="font-size:0.55rem"></i>&nbsp;${data.drawing.count.toLocaleString()}행`
-      } else {
-        drawingBadge.className = 'ref-db-status ref-db-empty'
-        drawingBadge.innerHTML = `<i class="fas fa-circle" style="font-size:0.55rem"></i>&nbsp;미등록`
-      }
-    }
-    if (drawingInfo) {
-      if (data.drawing.loaded) {
-        drawingInfo.innerHTML = `파일: <strong>${data.drawing.filename || '알 수 없음'}</strong> · 마지막 업데이트: ${data.drawing.updatedAt ? new Date(data.drawing.updatedAt).toLocaleString('ko-KR') : '—'}`
-      } else { drawingInfo.textContent = '' }
-    }
-
     // 헤더 배지 업데이트
     const headerBadge = document.getElementById('header-refdb-badge')
     if (headerBadge) {
-      const hasAny = data.plate.loaded || data.drawing.loaded
-      if (hasAny) {
+      if (data.plate.loaded) {
         headerBadge.style.display = 'inline-flex'
-        const parts = []
-        if (data.plate.loaded) parts.push(`P:${data.plate.count}`)
-        if (data.drawing.loaded) parts.push(`D:${data.drawing.count}`)
-        headerBadge.innerHTML = `<i class="fas fa-database"></i>&nbsp;DB: ${parts.join(' / ')}`
+        headerBadge.innerHTML = `<i class="fas fa-database"></i>&nbsp;DB: ${data.plate.count.toLocaleString()}개`
       } else {
         headerBadge.style.display = 'none'
       }
@@ -1500,13 +1394,13 @@ async function loadDBStatus() {
 
     // Plate 파일 리스트도 함께 갱신
     loadPlateFileList()
-    // DB 로드 상태 전역 플래그 (모달에서 사용)
-    window._dbLoaded = data.plate.loaded || data.drawing.loaded
+    // DB 로드 상태 전역 플래그
+    window._dbLoaded = data.plate.loaded
 
     // DB 변경 후 기존 OCR 결과 refMatch 재계산
     rematchAll()
   } catch(e) { console.error('[db status]', e) }
-}
+}}
 
 // ── DB 변경 시 기존 OCR 결과 refMatch 일괄 재계산 ────────────────────────────
 // DB 업로드/삭제 후 호출 → 현재 DB 기준으로 모든 이미지 refMatch 갱신
@@ -1568,16 +1462,12 @@ async function rematchAll() {
 }
 
 // ── 헤더 DB 배지 (설정 모달 외부에도 표시) ───────────────────────────────────
-function updateHeaderDBBadge(plateCount, drawingCount, plateLoaded, drawingLoaded) {
+function updateHeaderDBBadge(plateCount, plateLoaded) {
   const headerBadge = document.getElementById('header-refdb-badge')
   if (!headerBadge) return
-  const hasAny = plateLoaded || drawingLoaded
-  if (hasAny) {
+  if (plateLoaded) {
     headerBadge.style.display = 'inline-flex'
-    const parts = []
-    if (plateLoaded) parts.push(`P:${plateCount}`)
-    if (drawingLoaded) parts.push(`D:${drawingCount}`)
-    headerBadge.innerHTML = `<i class="fas fa-database"></i>&nbsp;DB: ${parts.join(' / ')}`
+    headerBadge.innerHTML = `<i class="fas fa-database"></i>&nbsp;DB: ${plateCount.toLocaleString()}개`
   } else {
     headerBadge.style.display = 'none'
   }

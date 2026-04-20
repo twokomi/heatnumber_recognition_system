@@ -11,7 +11,6 @@ const UNIFIED_DB_PATH  = path.join(__dirname, 'unified_db.json')      // 메타 
 const UNIFIED_ENT_PATH = path.join(__dirname, 'unified_entries.json')  // entries 별도 저장
 // 레거시 파일 경로 (삭제용으로만 유지)
 const PLATE_DB_PATH    = path.join(__dirname, 'plate_db.json')
-const DRAWING_DB_PATH  = path.join(__dirname, 'drawing_db.json')
 
 const app = express()
 app.use(express.json({ limit: '20mb' }))
@@ -75,14 +74,10 @@ if (runtimeApiKey) console.log(`[startup] API Key loaded: ${runtimeApiKey.slice(
 let unifiedDB = { files: [], updatedAt: null }  // 메타만 (entries 제외)
 let unifiedEntries = []  // 전체 entries 메모리 캐시
 
-// 레거시 변수 (참조만 유지 — 실제 사용 안 함)
-const plateDB  = { files: [], updatedAt: null }
-const drawingDB = { entries: [], updatedAt: null, filename: null }
-
-/** unifiedEntries에서 plateNo 중복 제거 목록 반환 */
+/** unifiedEntries 전체 반환 */
 function getAllPlateEntries() { return unifiedEntries }
 
-/** drawingFull 중복 제거 목록 반환 */
+/** drawingFull 중복 제거 목록 반환 (unifiedEntries에서 도출) */
 function getAllDrawingEntries() {
   const seen = new Set()
   const all  = []
@@ -713,30 +708,14 @@ app.get('/api/db/plate/files', (req, res) => {
   res.json({ files, totalFiles: files.length, totalEntries: getAllPlateEntries().length, totalDrawings: getAllDrawingEntries().length })
 })
 
-// ─── POST /api/db/drawing/upload — 신규 통합 형식만 허용 ────────────────────
-app.post('/api/db/drawing/upload', upload.single('file'), (req, res) => {
-  // Drawing DB는 별도 업로드 불필요 — 통합 Excel에 포함됨
-  return res.status(400).json({
-    error: 'Drawing DB는 별도 업로드가 필요 없습니다. "DB 파일 업로드" 버튼으로 통합 Excel을 업로드해 주세요.'
-  })
-})
-
 // ─── DELETE /api/db/plate (전체 초기화) ──────────────────────────────────────
 app.delete('/api/db/plate', (req, res) => {
   unifiedDB = { files: [], updatedAt: null }
   unifiedEntries = []
   if (fs.existsSync(UNIFIED_DB_PATH))  try { fs.unlinkSync(UNIFIED_DB_PATH) }  catch(e) {}
   if (fs.existsSync(UNIFIED_ENT_PATH)) try { fs.unlinkSync(UNIFIED_ENT_PATH) } catch(e) {}
-  plateDB = { files: [], updatedAt: null }
   if (fs.existsSync(PLATE_DB_PATH)) try { fs.unlinkSync(PLATE_DB_PATH) } catch(e) {}
   res.json({ ok: true })
-})
-
-// ─── DELETE /api/db/drawing ───────────────────────────────────────────────────
-app.delete('/api/db/drawing', (req, res) => {
-  // Drawing은 unified DB에 포함됨 — unified 전체 초기화로 처리
-  if (fs.existsSync(DRAWING_DB_PATH)) try { fs.unlinkSync(DRAWING_DB_PATH) } catch(e) {}
-  res.json({ ok: true, note: 'Drawing entries are part of unified DB. Use DELETE /api/db/plate to clear all.' })
 })
 
 // ─── GET /api/db/status ───────────────────────────────────────────────────────
@@ -746,20 +725,15 @@ app.get('/api/db/status', (req, res) => {
 
   res.json({
     plate: {
-      loaded:      allPlates.length > 0,
-      count:       allPlates.length,
-      fileCount:   unifiedDB.files.length,
-      updatedAt:   unifiedDB.updatedAt,
-      alphaCount:  allPlates.filter(e => e.type === 'alpha').length,
-      numericCount:allPlates.filter(e => e.type === 'numeric').length,
-      sample:      allPlates.slice(0, 3).map(e => e.plateNo)
-    },
-    drawing: {
-      loaded:    allDrawings.length > 0,
-      count:     allDrawings.length,
-      updatedAt: unifiedDB.updatedAt,
-      filename:  unifiedDB.files.map(f => f.filename).join(', ') || '',
-      sample:    allDrawings.slice(0, 3).map(e => e.drawingFull)
+      loaded:       allPlates.length > 0,
+      count:        allPlates.length,
+      fileCount:    unifiedDB.files.length,
+      updatedAt:    unifiedDB.updatedAt,
+      alphaCount:   allPlates.filter(e => e.type === 'alpha').length,
+      numericCount: allPlates.filter(e => e.type === 'numeric').length,
+      drawingCount: allDrawings.length,
+      filename:     unifiedDB.files.map(f => f.filename).join(', ') || '',
+      sample:       allPlates.slice(0, 3).map(e => e.plateNo)
     }
   })
 })
@@ -804,17 +778,15 @@ app.post('/api/db/rematch', (req, res) => {
       } : null
     } : { matched: false, confidence: 0, method: 'no_match', plate: null, drawing: null }
 
-    // status 재계산
-    const plateLoaded   = getAllPlateEntries().length > 0
-    const drawingLoaded = getAllDrawingEntries().length > 0
-    const anyDBLoaded = plateLoaded || drawingLoaded
+    // status 재계산 (unified DB 단일 기준)
+    const dbLoaded = getAllPlateEntries().length > 0
     let newStatus = null
-    if (anyDBLoaded) {
+    if (dbLoaded) {
       if (!combined.matched) {
         newStatus = 'MANUAL'
       } else {
-        const plateExact = !plateLoaded || (plateMatch?.matched && plateMatch.confidence >= 1.0)
-        const drawingExact = !drawingLoaded || (drawingMatch?.matched && drawingMatch.confidence >= 1.0)
+        const plateExact = plateMatch?.matched && plateMatch.confidence >= 1.0
+        const drawingExact = drawingMatch?.matched && drawingMatch.confidence >= 1.0
         newStatus = (plateExact && drawingExact) || combined.confidence >= 1.0 ? 'AUTO_OK' : 'REVIEW'
       }
     }
@@ -1018,14 +990,11 @@ function buildResult(parsed, method, elapsed, dbMatch = null) {
   // MANUAL  : 포맷 OK + DB 없음 or DB에 없음 → 사람이 수동 입력
   // OCR_FAIL: 포맷 2개 이상 실패         → Agentic 재시도 or 수동
   let status
-  // 실제 DB 로드 여부 = unified entries 수로 판단
-  const plateLoaded   = getAllPlateEntries().length > 0
-  const drawingLoaded = getAllDrawingEntries().length > 0
-  const anyDBLoaded = plateLoaded || drawingLoaded
+  const dbLoaded = getAllPlateEntries().length > 0
 
   if (validCount <= 1) {
     status = 'OCR_FAIL'
-  } else if (!anyDBLoaded) {
+  } else if (!dbLoaded) {
     // DB 자체가 없음 → 포맷만 검증됨, DB 확인 불가 → MANUAL
     status = 'MANUAL'
   } else if (!dbMatch?.combined?.matched) {
@@ -1033,10 +1002,10 @@ function buildResult(parsed, method, elapsed, dbMatch = null) {
     status = 'MANUAL'
   } else {
     // DB 매칭 있음
-    const plateExact = !plateLoaded || (dbMatch.plateMatch?.matched && dbMatch.plateMatch.confidence >= 1.0)
-    const drawingExact = !drawingLoaded || (dbMatch.drawingMatch?.matched && dbMatch.drawingMatch.confidence >= 1.0)
+    const plateExact = dbMatch.plateMatch?.matched && dbMatch.plateMatch.confidence >= 1.0
+    const drawingExact = dbMatch.drawingMatch?.matched && dbMatch.drawingMatch.confidence >= 1.0
     if (plateExact && drawingExact) {
-      status = 'AUTO_OK'  // 로드된 모든 DB에서 완전일치
+      status = 'AUTO_OK'  // 완전일치
     } else if (dbMatch.combined.confidence >= 1.0) {
       status = 'AUTO_OK'  // combined이 완전일치면 AUTO_OK
     } else {
