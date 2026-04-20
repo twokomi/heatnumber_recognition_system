@@ -483,7 +483,9 @@ function matchWithDBs(ocrLine1, ocrLine3) {
         if (s > best.score) best = { entry: e, score: s }
       }
       if (best.score >= 0.8) {
-        result.drawingMatch = { matched: true, entry: best.entry, confidence: 0.70, method: 'drawing_fuzzy', fuzzyScore: best.score }
+        // fuzzy confidence: 점수 기반으로 계산 (0.80→0.82, 0.95→0.92 등)
+        const fuzzyConf = 0.60 + best.score * 0.35
+        result.drawingMatch = { matched: true, entry: best.entry, confidence: Math.min(0.97, fuzzyConf), method: 'drawing_fuzzy', fuzzyScore: best.score }
       }
     }
   }
@@ -498,11 +500,22 @@ function matchWithDBs(ocrLine1, ocrLine3) {
                     pEntry.drawingFull === dEntry.drawingFull
 
     if (sameRow) {
-      // 교차검증 성공 — confidence는 두 개 중 낮은 쪽 기준 + 보너스
-      const base = Math.min(result.plateMatch.confidence, result.drawingMatch.confidence)
+      // 교차검증 성공 — plate_exact이면 drawing fuzzy여도 confidence 대폭 향상
+      const pConf = result.plateMatch.confidence
+      const dConf = result.drawingMatch.confidence
+      let combinedConf
+      if (pConf >= 1.0 && dConf >= 1.0) {
+        combinedConf = 1.0   // 둘 다 exact → 완전일치
+      } else if (pConf >= 1.0) {
+        // plate exact + drawing fuzzy + 같은 row → plate가 전 세계 유일하므로 사실상 확정
+        // drawing fuzzy는 OCR 오독 때문이지 DB 불일치가 아님 → confidence 높게
+        combinedConf = Math.min(1.0, dConf + 0.20)
+      } else {
+        combinedConf = Math.min(1.0, Math.min(pConf, dConf) + 0.05)
+      }
       result.combined = {
         matched: true,
-        confidence: Math.min(1.0, base + 0.05),   // 최대 5% 보너스
+        confidence: combinedConf,
         method: `${result.plateMatch.method}+${result.drawingMatch.method}`,
         crossValidated: true
       }
@@ -793,7 +806,12 @@ app.post('/api/db/rematch', (req, res) => {
       } else {
         const plateExact = plateMatch?.matched && plateMatch.confidence >= 1.0
         const drawingExact = drawingMatch?.matched && drawingMatch.confidence >= 1.0
-        newStatus = (plateExact && drawingExact) || combined.confidence >= 1.0 ? 'AUTO_OK' : 'REVIEW'
+        const crossValidated = combined?.crossValidated === true
+        if ((plateExact && drawingExact) || combined.confidence >= 1.0 || (plateExact && crossValidated)) {
+          newStatus = 'AUTO_OK'
+        } else {
+          newStatus = 'REVIEW'
+        }
       }
     }
 
@@ -1028,10 +1046,15 @@ function buildResult(parsed, method, elapsed, dbMatch = null) {
     // DB 매칭 있음
     const plateExact = dbMatch.plateMatch?.matched && dbMatch.plateMatch.confidence >= 1.0
     const drawingExact = dbMatch.drawingMatch?.matched && dbMatch.drawingMatch.confidence >= 1.0
+    const crossValidated = dbMatch.combined?.crossValidated === true
+
     if (plateExact && drawingExact) {
-      status = 'AUTO_OK'  // 완전일치
+      status = 'AUTO_OK'  // 둘 다 완전일치
     } else if (dbMatch.combined.confidence >= 1.0) {
-      status = 'AUTO_OK'  // combined이 완전일치면 AUTO_OK
+      status = 'AUTO_OK'  // combined 완전일치
+    } else if (plateExact && crossValidated) {
+      // plate_exact + 교차검증 통과 → PlateID는 전 세계 유일 → 사실상 확정
+      status = 'AUTO_OK'
     } else {
       status = 'REVIEW'   // 근사 매칭이거나 일부만 매칭
     }
