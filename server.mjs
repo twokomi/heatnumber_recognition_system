@@ -138,6 +138,9 @@ Drawing full:    [8]-[1][2]  e.g. 29308316-B01
   • 8 digits, hyphen, section letter [B L M U W T], 2-digit position [01-11]
 Drawing base:    exactly 8 digits (TYPE B line1 only)
 Material:        S355J0+N SSAB | S355J2+N SSAB | S355J0 | S355 J0
+  ⚠ Material may be printed on TWO physical lines (e.g. "S355J0+N" on one line, "SSAB" below it).
+     ALWAYS merge them into a single line2 value: "S355J0+N SSAB"
+     NEVER put "SSAB" or any material fragment into line3 (Drawing field).
 
 ━━ DOT-MATRIX CONFUSION PAIRS ━━
 Count connected strokes to determine character boundaries.
@@ -179,6 +182,9 @@ Numeric PlateID [7]-[2]-[1]-[2]:
   seg1 = exactly 7 digits. Total chars (no hyphens) = 12
 Drawing full [8]-[L][2]:  8digits + hyphen + section{B,L,M,U,W,T} + 2digits(01-11)
 Drawing base: exactly 8 digits (TYPE B only)
+Material: S355J0+N SSAB | S355J2+N SSAB | S355J0 | S355 J0
+  ⚠ CRITICAL: Material is sometimes stamped on TWO physical lines: "S355J0+N" then "SSAB" below.
+     You MUST combine them → line2 = "S355J0+N SSAB". NEVER place "SSAB" into line3.
 
 ━━ STROKE-LEVEL DISAMBIGUATION (read pixel shapes, not assumptions) ━━
 8 vs 3:
@@ -869,10 +875,28 @@ function normalizeLines(parsed) {
     }
   }
   // TYPE A (기본): line1=PlateNo, line2=Material, line3=DrawingNo
+  let material  = (parsed.line2 || '').trim()
+  let drawingNo = (parsed.line3 || '').trim()
+
+  // ── Material 흘림 감지: line3가 Material 파편인 경우 ────────────────────
+  // 케이스: OCR이 "S355J0+N" / "SSAB" 처럼 쪼개서 SSAB가 line3에 들어온 경우
+  // 또는 "S355J0+N SSAB" 전체가 line2에 들어왔지만 SSAB만 line3에 중복 존재
+  const MATERIAL_FRAGMENTS = /^(SSAB|S355|J0|J2|\+N|J0\+N|J2\+N|S355J0|S355J2|S355\s?J[02])/i
+  const DRAWING_PATTERN = /^\d{8}(-[A-Z]\d{2})?$|^[A-Z]{1,2}\d/  // 유효한 drawing 패턴
+
+  if (drawingNo && MATERIAL_FRAGMENTS.test(drawingNo) && !DRAWING_PATTERN.test(drawingNo)) {
+    // line3가 drawing이 아니라 material 파편 → line2에 합치고 line3 비우기
+    const fragment = drawingNo.toUpperCase()
+    const base = material.toUpperCase()
+    // 이미 포함돼 있으면 중복 추가 안 함
+    material  = base.includes(fragment) ? material : (material + ' ' + drawingNo).trim()
+    drawingNo = ''
+  }
+
   return {
     plateNo: parsed.line1 || '',
-    material: parsed.line2 || '',
-    drawingNo: parsed.line3 || '',
+    material,
+    drawingNo,
     layoutType: 'A'
   }
 }
