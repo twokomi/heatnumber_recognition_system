@@ -153,6 +153,9 @@ Each character = one connected dot cluster. Gap between clusters = character bou
   8 vs 3  — 8: both loops fully closed on left AND right
              3: TOP stroke is nearly STRAIGHT/flat on the left, not fully closed
   B vs 6  — B starts with vertical stroke; 6 is fully curved
+  B vs C  — B has vertical LEFT stroke + two closed right bumps (right side is CLOSED)
+             C has NO vertical left stroke; it is an open arc, right side is OPEN/missing
+             → If the right side is open (gap visible), it is C. If right side is closed bumps, it is B.
   A vs 4  — rarely confused but: A has peak+crossbar, 4 has open top
 
 {{DB_HINTS}}
@@ -197,8 +200,9 @@ Material: S355J0+N SSAB | S355J2+N SSAB | S355J0 | S355 J0
   • B → clear flat VERTICAL stroke on the LEFT side. Right side only has bumps/bumps.
   → DECISION: Is the left edge a straight vertical line? YES = B. NO (curved) = 8.
 
-3 vs 8 vs B — SUMMARY:
-  B: straight left stroke + two right bumps (in letter zone only)
+3 vs 8 vs B vs C — SUMMARY:
+  B: straight left stroke + two right bumps (RIGHT SIDE IS CLOSED)
+  C: no left stroke, open arc, RIGHT SIDE IS OPEN (gap on the right)
   8: two closed loops, no straight lines anywhere
   3: right side two bumps, LEFT TOP is OPEN / straight
 
@@ -221,6 +225,12 @@ Material: S355J0+N SSAB | S355J2+N SSAB | S355J0 | S355 J0
   • G → open C with inward horizontal tick on right
   • C → open on the right, no tick
   → DECISION: Does it have a bottom loop fully closed? 6. Has right tick? G. Otherwise C.
+
+B vs C (critical for pos3 of alpha PlateID):
+  • B → VERTICAL stroke on the LEFT + two closed bumps on the RIGHT (right side is fully closed)
+  • C → NO vertical left stroke; it is a curved open arc; RIGHT SIDE IS OPEN (there is a gap/opening)
+  → DECISION: Look at the right side. If there is a clear opening/gap → C. If right side is closed bumps attached to a vertical line → B.
+  ⚠ In pos3 of alpha PlateID, ANY uppercase letter is valid (A–Z). Do NOT default to B — read the actual shape.
 
 2 vs Z:
   • 2 → curved top, diagonal, bottom horizontal stroke
