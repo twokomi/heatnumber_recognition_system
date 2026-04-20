@@ -260,9 +260,11 @@ D vs 0 vs Q:
    ⚠ EXCEPTION for pos3 (3rd char of alpha PlateID): pos3 can be ANY letter (C, K, J, etc.).
      DB may have few or no entries with that letter — that does NOT mean your reading is wrong.
      For pos3: trust your pixel-level reading OVER DB frequency bias.
-6. Cross-check PlateID vs Drawing: they must come from same physical plate.
-   ⭐ If DB hints show "CROSS-VALIDATED" candidate → that is almost certainly the correct answer.
-   Use it EXACTLY as shown unless pixel-level evidence strongly contradicts it.
+7. Cross-check PlateID vs Drawing: they must come from same physical plate.
+   ⭐ If DB hints show "CROSS-VALIDATED" candidate → it means those two values exist together in DB.
+   Only use it if your actual pixel-level reading of the image matches that candidate closely.
+   ⚠ NEVER copy a DB candidate into your output if your image reading differs significantly.
+      Your output must reflect what you SEE in the image, not what is in the DB.
 
 {{DB_HINTS}}
 
@@ -387,8 +389,9 @@ function buildCandidatesBlock(rawPlate, rawDrawing, opts = {}) {
         return Math.max(sp, sh) >= threshold && e.drawingFull === ocr3
       })
       if (crossHit) {
-        lines.push(`⭐ CROSS-VALIDATED: PlateID "${crossHit.plateNo}" AND Drawing "${crossHit.drawingFull}" point to SAME DB record.`)
-        lines.push(`   → Use EXACTLY: PlateID="${crossHit.plateNo}"  Drawing="${crossHit.drawingFull}"`)
+        lines.push(`⭐ CROSS-VALIDATED: PlateID "${crossHit.plateNo}" AND Drawing "${crossHit.drawingFull}" exist together in DB.`)
+        lines.push(`   → If your image reading closely matches these, they are likely correct.`)
+        lines.push(`   → But READ THE IMAGE FIRST — only use this if your pixel-level reading agrees.`)
       }
     } else {
       // drawing이 없을 때: plate 후보의 drawingFull을 역으로 제시
@@ -407,7 +410,7 @@ function buildCandidatesBlock(rawPlate, rawDrawing, opts = {}) {
     }
   }
 
-  lines.push('NOTE: If your reading matches a candidate above, prefer that exact string.')
+  lines.push('NOTE: DB candidates are for REFERENCE only. Always read the image first — only use a candidate if your pixel-level reading matches it.')
   return lines.join('\n')
 }
 
