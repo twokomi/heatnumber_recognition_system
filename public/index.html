@@ -1400,7 +1400,7 @@ async function loadDBStatus() {
     // DB 변경 후 기존 OCR 결과 refMatch 재계산
     rematchAll()
   } catch(e) { console.error('[db status]', e) }
-}}
+}
 
 // ── DB 변경 시 기존 OCR 결과 refMatch 일괄 재계산 ────────────────────────────
 // DB 업로드/삭제 후 호출 → 현재 DB 기준으로 모든 이미지 refMatch 갱신
