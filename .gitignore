@@ -31,3 +31,15 @@ lerna-debug.log*
 
 # misc
 .DS_Store
+
+# 업로드 파일 (로컬 전용)
+uploads/
+
+# DB 파일 (서버에서 업로드로 관리)
+unified_entries.json
+unified_db.json
+plate_db.json
+
+# PM2
+ecosystem.config.cjs
+.pm2/
