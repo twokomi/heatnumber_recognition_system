@@ -653,7 +653,9 @@ function renderDBMatchInline(elId, refM, hasDB) {
     plate_fuzzy: '근사일치',
     drawing_exact: '완전일치',
     drawing_base_match: '기본번호일치',
-    drawing_fuzzy: '근사일치'
+    drawing_fuzzy: '근사일치',
+    drawing_from_plate_exact: 'Plate역조회보정',
+    'plate_exact+drawing_from_plate_exact': '완전일치(도면보정)'
   }
 
   let chips = ''
@@ -663,8 +665,13 @@ function renderDBMatchInline(elId, refM, hasDB) {
     chips += `<span class="dbmatch-chip chip-method">${methodLabel[plate.matchMethod] || plate.matchMethod}</span>`
   }
   if (drawing) {
-    chips += `<span class="dbmatch-chip chip-drawing" title="Drawing Number"><i class="fas fa-drafting-compass" style="font-size:0.6rem"></i>${drawing.drawingFull}</span>`
+    // drawing 보정된 경우: 원래 OCR값(취소선) → DB 보정값 표시
+    const drawLabel = drawing.correctedFrom
+      ? `<span style="text-decoration:line-through;opacity:0.5;font-size:0.7rem">${drawing.correctedFrom}</span>→${drawing.drawingFull}`
+      : drawing.drawingFull
+    chips += `<span class="dbmatch-chip chip-drawing" title="Drawing Number"><i class="fas fa-drafting-compass" style="font-size:0.6rem"></i>${drawLabel}</span>`
     if (!plate) chips += `<span class="dbmatch-chip chip-method">${methodLabel[drawing.matchMethod] || drawing.matchMethod}</span>`
+    if (drawing.correctedFrom) chips += `<span class="dbmatch-chip chip-method" style="background:#d4edda;color:#155724" title="OCR 오독 자동 보정">✓도면보정</span>`
   }
   if (!plate && !drawing) {
     chips += `<span class="dbmatch-chip chip-nodata">매칭 정보 없음</span>`

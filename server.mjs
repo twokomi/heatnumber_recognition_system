@@ -556,9 +556,71 @@ function matchWithDBs(ocrLine1, ocrLine3) {
       }
     }
   } else if (result.plateMatch?.matched) {
-    result.combined = { matched: true, confidence: result.plateMatch.confidence, method: result.plateMatch.method }
+    // ─── plate만 매칭된 경우: plate_exact이면 DB에서 drawing 역조회 시도 ────
+    // 케이스: OCR drawing이 아예 없거나, drawing 매칭이 0개인 경우
+    if (result.plateMatch.confidence >= 1.0 && result.plateMatch.entry?.drawingFull && ocr3) {
+      const dbDrawing = result.plateMatch.entry.drawingFull
+      const simScore  = stringSimilarity(ocr3, dbDrawing)
+      if (simScore >= 0.85) {
+        // OCR drawing이 DB 역조회값과 85% 이상 유사 → drawing OCR 오독으로 판단, DB값으로 보정
+        const drawEntry = getAllDrawingEntries().find(e => e.drawingFull === dbDrawing)
+        result.drawingMatch = {
+          matched: true,
+          entry: drawEntry || { drawingFull: dbDrawing, drawingBase: dbDrawing.split('-')[0], sectionCode: '', skirtNo: '' },
+          confidence: 1.0,
+          method: 'drawing_from_plate_exact',
+          correctedFrom: ocr3
+        }
+        result.combined = {
+          matched: true,
+          confidence: 1.0,
+          method: `plate_exact+drawing_from_plate_exact`,
+          crossValidated: true,
+          drawingCorrected: true,   // drawing OCR이 보정됐음을 표시
+          originalOcrDrawing: ocr3  // 원래 OCR 값 보존
+        }
+        result.crossValidated = true
+      } else {
+        // 유사도 낮음 → plate OCR 자체가 틀렸을 가능성 → 그냥 plate만 반환
+        result.combined = { matched: true, confidence: result.plateMatch.confidence, method: result.plateMatch.method }
+      }
+    } else {
+      result.combined = { matched: true, confidence: result.plateMatch.confidence, method: result.plateMatch.method }
+    }
   } else if (result.drawingMatch?.matched) {
     result.combined = { matched: true, confidence: result.drawingMatch.confidence, method: result.drawingMatch.method }
+  }
+
+  // ─── plate_exact + crossConflict 재검토 ────────────────────────────────────
+  // crossConflict가 발생했는데 plate_exact인 경우:
+  // plate entry의 drawingFull vs OCR drawing 유사도를 체크해서
+  // 85% 이상이면 drawing OCR 오독으로 판단 → crossConflict 해소, AUTO_OK 가능
+  if (result.combined?.crossConflict && result.plateMatch?.confidence >= 1.0) {
+    const dbDrawing  = result.plateMatch.entry?.drawingFull
+    const simScore   = dbDrawing ? stringSimilarity(ocr3, dbDrawing) : 0
+    console.log(`[crossConflict재검토] ocr3="${ocr3}" dbDrawing="${dbDrawing}" sim=${simScore.toFixed(3)} pass=${simScore>=0.85}`)
+    if (simScore >= 0.85) {
+      // plate_exact의 DB drawing과 OCR drawing이 충분히 유사
+      // → drawing OCR 오독이 원인, plate는 맞음 → DB drawing으로 보정
+      const drawEntry = getAllDrawingEntries().find(e => e.drawingFull === dbDrawing)
+      result.drawingMatch = {
+        matched: true,
+        entry: drawEntry || { drawingFull: dbDrawing, drawingBase: dbDrawing.split('-')[0], sectionCode: '', skirtNo: '' },
+        confidence: 1.0,
+        method: 'drawing_from_plate_exact',
+        correctedFrom: ocr3
+      }
+      result.combined = {
+        matched: true,
+        confidence: 1.0,
+        method: 'plate_exact+drawing_from_plate_exact',
+        crossValidated: true,
+        drawingCorrected: true,
+        originalOcrDrawing: ocr3
+      }
+      result.crossValidated = true
+    }
+    // 유사도 낮으면 crossConflict 유지 → REVIEW
   }
 
   return result
@@ -1023,6 +1085,9 @@ function buildResult(parsed, method, elapsed, dbMatch = null) {
       matched: combined.matched,
       confidence: combined.confidence,
       method: combined.method,
+      crossValidated: combined.crossValidated || false,
+      drawingCorrected: combined.drawingCorrected || false,
+      originalOcrDrawing: combined.originalOcrDrawing || null,
       plate: plateMatch?.matched ? {
         plateNo: plateMatch.entry?.plateNo,
         heatNo: plateMatch.entry?.heatNo,
@@ -1036,7 +1101,8 @@ function buildResult(parsed, method, elapsed, dbMatch = null) {
         sectionCode: drawingMatch.entry?.sectionCode,
         skirtNo: drawingMatch.entry?.skirtNo,
         confidence: drawingMatch.confidence,
-        matchMethod: drawingMatch.method
+        matchMethod: drawingMatch.method,
+        correctedFrom: drawingMatch.correctedFrom || null
       } : null
     }
 
