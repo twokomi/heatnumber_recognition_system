@@ -43,3 +43,4 @@ plate_db.json
 # PM2
 ecosystem.config.cjs
 .pm2/
+core
