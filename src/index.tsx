@@ -136,12 +136,12 @@ type PlateEntry = {
 }
 
 async function getAllPlateEntries(db: D1Database): Promise<PlateEntry[]> {
-  const result = await db.prepare('SELECT plate_no as plateNo, heat_no as heatNo, type, drawing_full as drawingFull, drawing_base as drawingBase, section_code as sectionCode, skirt_no as skirtNo FROM plates').all<PlateEntry>()
+  const result = await db.prepare('SELECT plateNo, heatNo, type, drawingFull, drawingBase, sectionCode, skirtNo FROM plates').all<PlateEntry>()
   return result.results || []
 }
 
 async function getAllDrawingEntries(db: D1Database) {
-  const result = await db.prepare('SELECT DISTINCT drawing_full as drawingFull, drawing_base as drawingBase, section_code as sectionCode, skirt_no as skirtNo FROM plates WHERE drawing_full IS NOT NULL').all<{ drawingFull: string, drawingBase: string, sectionCode: string, skirtNo: number }>()
+  const result = await db.prepare('SELECT DISTINCT drawingFull, drawingBase, sectionCode, skirtNo FROM plates WHERE drawingFull IS NOT NULL').all<{ drawingFull: string, drawingBase: string, sectionCode: string, skirtNo: number }>()
   return result.results || []
 }
 
@@ -660,7 +660,7 @@ app.get('/api/db/status', async (c) => {
     const numericCount = allPlates.filter(e => e.type === 'numeric').length
 
     // 파일 목록 조회
-    const filesResult = await c.env.DB.prepare('SELECT DISTINCT file_id as fileId, file_id as filename FROM plates LIMIT 20').all<{ fileId: string, filename: string }>()
+    const filesResult = await c.env.DB.prepare('SELECT DISTINCT _fileId as fileId, _filename as filename FROM plates LIMIT 20').all<{ fileId: string, filename: string }>()
 
     return c.json({
       plate: {
@@ -671,7 +671,7 @@ app.get('/api/db/status', async (c) => {
         alphaCount,
         numericCount,
         drawingCount: allDrawings.length,
-        filename: filesResult.results?.map(f => f.fileId).join(', ') || '',
+        filename: filesResult.results?.map(f => f.filename).join(', ') || '',
         sample: allPlates.slice(0, 3).map(e => e.plateNo)
       }
     })
@@ -684,13 +684,13 @@ app.get('/api/db/status', async (c) => {
 app.get('/api/db/plate/files', async (c) => {
   try {
     const result = await c.env.DB.prepare(`
-      SELECT file_id as fileId, file_id as filename, created_at as uploadedAt,
+      SELECT _fileId as fileId, _filename as filename, _uploadedAt as uploadedAt,
              COUNT(*) as count,
              SUM(CASE WHEN type='alpha' THEN 1 ELSE 0 END) as alphaCount,
              SUM(CASE WHEN type='numeric' THEN 1 ELSE 0 END) as numericCount,
-             COUNT(DISTINCT drawing_full) as drawingCount
+             COUNT(DISTINCT drawingFull) as drawingCount
       FROM plates
-      GROUP BY file_id
+      GROUP BY _fileId, _filename, _uploadedAt
     `).all<any>()
     const files = result.results || []
     const totalEntries = files.reduce((sum: number, f: any) => sum + (f.count || 0), 0)
@@ -705,9 +705,9 @@ app.get('/api/db/plate/files', async (c) => {
 app.delete('/api/db/plate/file/:fileId', async (c) => {
   try {
     const fileId = c.req.param('fileId')
-    const countResult = await c.env.DB.prepare('SELECT COUNT(*) as n FROM plates WHERE file_id = ?').bind(fileId).first<{ n: number }>()
+    const countResult = await c.env.DB.prepare('SELECT COUNT(*) as n FROM plates WHERE _fileId = ?').bind(fileId).first<{ n: number }>()
     if (!countResult || countResult.n === 0) return c.json({ error: '파일을 찾을 수 없습니다' }, 404)
-    await c.env.DB.prepare('DELETE FROM plates WHERE file_id = ?').bind(fileId).run()
+    await c.env.DB.prepare('DELETE FROM plates WHERE _fileId = ?').bind(fileId).run()
     return c.json({ ok: true, totalEntries: 0 })
   } catch (e: any) {
     return c.json({ error: e.message }, 500)
@@ -744,8 +744,8 @@ app.post('/api/db/plate/upload', async (c) => {
       const batch = entries.slice(i, i + batchSize)
       const stmts = batch.map((e: any) =>
         c.env.DB.prepare(
-          'INSERT INTO plates (plate_no, heat_no, type, drawing_full, drawing_base, section_code, skirt_no, file_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?)'
-        ).bind(e.plateNo, e.heatNo, e.type || 'alpha', e.drawingFull || '', e.drawingBase || '', e.sectionCode || '', e.skirtNo || 0, fileId)
+          'INSERT OR REPLACE INTO plates (plateNo, heatNo, type, drawingFull, drawingBase, sectionCode, skirtNo, _fileId, _filename, _uploadedAt) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)'
+        ).bind(e.plateNo, e.heatNo, e.type || 'alpha', e.drawingFull || '', e.drawingBase || '', e.sectionCode || '', e.skirtNo || 0, fileId, filename || 'upload', uploadedAt)
       )
       await c.env.DB.batch(stmts)
       inserted += batch.length

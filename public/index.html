@@ -296,55 +296,31 @@
     <!-- ── 탭 1: API Key ── -->
     <div id="stab-content-apikey" style="padding:20px;display:flex;flex-direction:column;gap:16px">
 
-      <!-- 현재 설정 상태 표시 -->
-      <div id="current-key-status" style="display:none;background:rgba(63,185,80,0.08);border:1px solid rgba(63,185,80,0.25);border-radius:8px;padding:12px 16px">
-        <div style="display:flex;align-items:center;justify-content:space-between">
-          <div>
-            <p style="font-size:0.8rem;font-weight:600;color:#3fb950;margin-bottom:4px"><i class="fas fa-check-circle" style="margin-right:6px"></i>API 키 설정됨</p>
-            <p style="font-size:0.75rem;color:var(--text-secondary)">현재 키: <code id="current-key-preview" style="background:rgba(139,148,158,0.15);padding:2px 6px;border-radius:3px;font-family:monospace"></code></p>
-            <p id="persist-status-label" style="font-size:0.72rem;color:var(--text-secondary);margin-top:4px"></p>
-          </div>
-          <button onclick="clearApiKey()" style="padding:4px 10px;font-size:0.72rem;background:rgba(248,81,73,0.1);border:1px solid rgba(248,81,73,0.3);color:#f85149;border-radius:4px;cursor:pointer">
-            <i class="fas fa-trash" style="margin-right:4px"></i>삭제
-          </button>
-        </div>
+      <div style="background:rgba(63,185,80,0.08);border:1px solid rgba(63,185,80,0.25);border-radius:8px;padding:14px 16px">
+        <p style="font-size:0.82rem;font-weight:600;color:#3fb950;margin-bottom:6px">
+          <i class="fas fa-check-circle" style="margin-right:6px"></i>API 키 설정됨 (Cloudflare Secret)
+        </p>
+        <p style="font-size:0.75rem;color:var(--text-secondary);margin-bottom:4px">
+          현재 키: <code id="current-key-preview" style="background:rgba(139,148,158,0.15);padding:2px 6px;border-radius:3px;font-family:monospace"></code>
+        </p>
+        <p id="persist-status-label" style="font-size:0.72rem;color:var(--text-secondary);margin-top:4px"></p>
       </div>
 
-      <div>
-        <label style="font-size:0.78rem;color:var(--text-secondary);display:block;margin-bottom:6px">OpenAI API Key <span style="color:var(--red)">*</span></label>
-        <input type="password" id="apikey-input" placeholder="sk-..."
-          style="width:100%;padding:10px 12px;background:var(--bg-primary);border:1px solid var(--border);border-radius:6px;color:var(--text-primary);font-size:0.85rem;font-family:monospace;outline:none;transition:border 0.2s"
-          onfocus="this.style.borderColor='var(--blue)'" onblur="this.style.borderColor='var(--border)'"
-          onkeydown="if(event.key==='Enter') saveApiKey()">
-      </div>
-      <div>
-        <label style="font-size:0.78rem;color:var(--text-secondary);display:block;margin-bottom:6px">Base URL <span style="font-size:0.7rem">(선택, 기본값: https://api.openai.com/v1)</span></label>
-        <input type="text" id="apikey-baseurl" placeholder="https://api.openai.com/v1"
-          style="width:100%;padding:10px 12px;background:var(--bg-primary);border:1px solid var(--border);border-radius:6px;color:var(--text-primary);font-size:0.82rem;font-family:monospace;outline:none;transition:border 0.2s"
-          onfocus="this.style.borderColor='var(--blue)'" onblur="this.style.borderColor='var(--border)'">
-      </div>
-
-      <!-- 영구 저장 토글 -->
-      <div style="background:rgba(139,148,158,0.06);border:1px solid var(--border);border-radius:8px;padding:12px 16px">
-        <label class="toggle-wrap" onclick="togglePersist()">
-          <div class="toggle-track" id="persist-toggle-track">
-            <div class="toggle-thumb"></div>
-          </div>
-          <div>
-            <p style="font-size:0.82rem;font-weight:600;color:var(--text-primary)">서버 재시작 후에도 유지 (.dev.vars 저장)</p>
-            <p style="font-size:0.72rem;color:var(--text-secondary);margin-top:2px">켜면 서버 파일에 저장 · 끄면 메모리에만 저장 (재시작 시 초기화)</p>
-          </div>
-        </label>
+      <div style="background:rgba(139,148,158,0.06);border:1px solid var(--border);border-radius:8px;padding:14px 16px">
+        <p style="font-size:0.82rem;font-weight:600;color:var(--text-primary);margin-bottom:6px">
+          <i class="fas fa-cloud" style="margin-right:6px;color:#58a6ff"></i>Cloudflare Workers Secret으로 관리됩니다
+        </p>
+        <p style="font-size:0.75rem;color:var(--text-secondary);line-height:1.6">
+          이 앱은 Cloudflare Pages에 배포되어 API Key를 UI에서 직접 변경할 수 없습니다.<br>
+          변경이 필요하면 Cloudflare Dashboard → heatnumber-recognition → Settings → Environment Variables에서
+          <code style="background:rgba(139,148,158,0.15);padding:1px 5px;border-radius:3px">OPENAI_API_KEY</code> secret을 수정하세요.
+        </p>
       </div>
 
       <div id="apikey-error" class="error-box" style="display:none"></div>
       <div id="apikey-success" class="success-box" style="display:none"></div>
+    </div>
 
-      <button onclick="saveApiKey()"
-        style="width:100%;padding:11px;font-size:0.88rem;font-weight:600;background:rgba(88,166,255,0.2);border:1px solid rgba(88,166,255,0.4);color:var(--blue);border-radius:6px;cursor:pointer;transition:all 0.2s"
-        onmouseover="this.style.background='rgba(88,166,255,0.3)'" onmouseout="this.style.background='rgba(88,166,255,0.2)'">
-        <i class="fas fa-save" style="margin-right:6px"></i>저장 및 적용
-      </button>
     </div>
 
     <!-- ── 탭 2: Standard 프롬프트 ── -->

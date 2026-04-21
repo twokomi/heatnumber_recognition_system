@@ -1,0 +1,9 @@
+name = "heatnumber-recognition"
+compatibility_date = "2026-04-13"
+pages_build_output_dir = "./dist"
+compatibility_flags = ["nodejs_compat"]
+
+[[d1_databases]]
+binding = "DB"
+database_name = "heatnumber_recognition"
+database_id = "d10e8ec1-cb9e-4617-abf1-22d7cdaa9b0f"
