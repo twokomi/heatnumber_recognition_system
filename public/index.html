@@ -73,6 +73,18 @@
     .sort-btn { padding: 4px 10px; font-size: 0.72rem; border-radius: 4px; border: 1px solid var(--border); background: var(--bg-card); color: var(--text-secondary); cursor: pointer; transition: all 0.2s; display: flex; align-items: center; gap: 4px; }
     .sort-btn:hover { background: var(--bg-card-hover); color: var(--text-primary); }
     .sort-btn.active { background: rgba(88,166,255,0.15); border-color: var(--blue); color: var(--blue); }
+    /* ── 필터 버튼 ── */
+    .filter-btns { display: flex; gap: 4px; flex-wrap: wrap; }
+    .filter-btn { padding: 3px 9px; font-size: 0.68rem; border-radius: 4px; border: 1px solid var(--border); background: var(--bg-card); color: var(--text-secondary); cursor: pointer; transition: all 0.2s; display: flex; align-items: center; gap: 3px; }
+    .filter-btn:hover { background: var(--bg-card-hover); color: var(--text-primary); }
+    .filter-btn.active-manual   { background: rgba(248,81,73,0.15); border-color: #f85149; color: #f85149; }
+    .filter-btn.active-review   { background: rgba(210,153,34,0.15); border-color: #d29922; color: #d29922; }
+    .filter-btn.active-ocr_fail { background: rgba(139,148,158,0.15); border-color: #8b949e; color: #8b949e; }
+    .filter-btn.active-auto_ok  { background: rgba(63,185,80,0.15);  border-color: #3fb950; color: #3fb950; }
+    /* ── 카드 삭제 버튼 ── */
+    .card-delete-btn { position:absolute; top:6px; right:6px; width:20px; height:20px; border-radius:50%; border:none; background:rgba(248,81,73,0.0); color:var(--text-secondary); cursor:pointer; font-size:0.7rem; display:flex; align-items:center; justify-content:center; opacity:0; transition:opacity 0.15s,background 0.15s; z-index:2; }
+    .image-card:hover .card-delete-btn { opacity:1; }
+    .card-delete-btn:hover { background:rgba(248,81,73,0.85) !important; color:#fff !important; }
 
     /* ── CSV 내보내기 버튼 ── */
     .export-btn { padding: 4px 10px; font-size: 0.72rem; border-radius: 4px; border: 1px solid var(--border); background: var(--bg-card); color: var(--text-secondary); cursor: pointer; transition: all 0.2s; display: flex; align-items: center; gap: 4px; }
@@ -80,7 +92,7 @@
 
     /* ── 이미지 카드 ── */
     .image-grid { display: flex; flex-direction: column; gap: 8px; }
-    .image-card { background: var(--bg-card); border: 1px solid var(--border); border-radius: 8px; padding: 14px 16px; display: flex; align-items: center; gap: 16px; cursor: pointer; transition: all 0.2s; }
+    .image-card { position: relative; background: var(--bg-card); border: 1px solid var(--border); border-radius: 8px; padding: 14px 16px; display: flex; align-items: center; gap: 16px; cursor: pointer; transition: all 0.2s; }
     .image-card:hover { background: var(--bg-card-hover); border-color: #58a6ff44; }
     .image-thumb { width: 80px; height: 60px; object-fit: cover; border-radius: 4px; border: 1px solid var(--border); flex-shrink: 0; background: #1c2128; }
     .card-filename { font-size: 0.78rem; color: var(--text-secondary); margin-bottom: 6px; font-family: monospace; }
@@ -482,10 +494,16 @@
   <div>
     <div class="grid-header">
       <h2>All Images <span id="grid-total-count" style="font-size:0.78rem;color:var(--text-secondary);font-weight:400"></span></h2>
-      <div style="display:flex;gap:6px;align-items:center">
+      <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">
         <div class="sort-btns">
-          <button class="sort-btn active" id="sort-status" onclick="sortImages('status')"><i class="fas fa-exclamation-circle"></i> 중요순</button>
+          <button class="sort-btn active" id="sort-status" onclick="sortImages('status')"><i class="fas fa-layer-group"></i> Status순</button>
           <button class="sort-btn" id="sort-name" onclick="sortImages('name')"><i class="fas fa-sort-alpha-down"></i> 이름순</button>
+        </div>
+        <div class="filter-btns" id="filter-btns">
+          <button class="filter-btn" id="filter-manual"   onclick="toggleFilter('MANUAL')"  ><i class="fas fa-times-circle"   style="font-size:0.6rem"></i> MANUAL</button>
+          <button class="filter-btn" id="filter-review"   onclick="toggleFilter('REVIEW')"  ><i class="fas fa-exclamation-circle" style="font-size:0.6rem"></i> REVIEW</button>
+          <button class="filter-btn" id="filter-ocr_fail" onclick="toggleFilter('OCR_FAIL')"><i class="fas fa-question-circle" style="font-size:0.6rem"></i> OCR FAIL</button>
+          <button class="filter-btn" id="filter-auto_ok"  onclick="toggleFilter('AUTO_OK')" ><i class="fas fa-check-circle"   style="font-size:0.6rem"></i> AUTO OK</button>
         </div>
         <button class="export-btn" id="csv-export-btn" onclick="exportCSV()" style="display:none">
           <i class="fas fa-file-csv"></i> CSV
@@ -569,6 +587,7 @@
 <script>
 let images = []
 let sortMode = 'status'
+let activeFilters = new Set()   // 활성 필터 (비어있으면 전체 표시)
 let currentModalIdx = -1
 let persistEnabled = false
 let apiBtnBorderColor = 'var(--border)'
@@ -851,8 +870,8 @@ function renderGrid() {
     return
   }
 
-  // 정렬: status 우선순위 (MANUAL→REVIEW→OCR_FAIL→AUTO_OK), 이름순
-  const sorted = [...images].sort((a, b) => {
+  // 정렬 + 필터
+  let sorted = [...images].sort((a, b) => {
     if (sortMode === 'status') {
       const sa = STATUS_CONFIG[getStatus(a)]?.sortOrder ?? 2
       const sb = STATUS_CONFIG[getStatus(b)]?.sortOrder ?? 2
@@ -860,6 +879,21 @@ function renderGrid() {
     }
     return a.filename.localeCompare(b.filename)
   })
+
+  // 필터 적용 (activeFilters가 비어있으면 전체 표시)
+  if (activeFilters.size > 0) {
+    sorted = sorted.filter(img => activeFilters.has(getStatus(img)))
+  }
+
+  const filteredCount = activeFilters.size > 0 ? sorted.length : images.length
+  document.getElementById('grid-total-count').textContent = activeFilters.size > 0
+    ? `(${sorted.length}/${images.length}개)`
+    : `(${images.length}개)`
+
+  if (!sorted.length) {
+    grid.innerHTML = `<div class="empty-state"><i class="fas fa-filter"></i><p>선택한 필터에 해당하는 결과가 없습니다</p></div>`
+    return
+  }
 
   grid.innerHTML = sorted.map(img => {
     const origIdx = images.indexOf(img)
@@ -888,6 +922,7 @@ function renderGrid() {
     }
 
     return `<div class="image-card" onclick="openModal(${origIdx})" style="border-left:3px solid ${hasError ? '#484f58' : cfg.color}">
+      <button class="card-delete-btn" onclick="event.stopPropagation();deleteImage(${origIdx})" title="이 결과 삭제"><i class="fas fa-times"></i></button>
       <img class="image-thumb" src="${img.dataUrl}" alt="">
       <div style="flex:1;min-width:0">
         <div class="card-filename">${img.filename}</div>
@@ -910,7 +945,10 @@ function renderGrid() {
   }).join('')
 
   updateStatusBar()
-  document.getElementById('grid-total-count').textContent = `(${images.length}개)`
+  // grid-total-count는 필터 적용 시 위에서 이미 처리됨 (필터 없으면 여기서 설정)
+  if (activeFilters.size === 0) {
+    document.getElementById('grid-total-count').textContent = `(${images.length}개)`
+  }
 }
 
 function updateStatusBar() {
@@ -943,6 +981,30 @@ function sortImages(mode) {
   sortMode = mode
   document.getElementById('sort-status').classList.toggle('active', mode === 'status')
   document.getElementById('sort-name').classList.toggle('active', mode === 'name')
+  renderGrid()
+}
+
+function toggleFilter(status) {
+  const key = status.toLowerCase()
+  const btn = document.getElementById('filter-' + key)
+  if (activeFilters.has(status)) {
+    activeFilters.delete(status)
+    btn.className = 'filter-btn'
+  } else {
+    activeFilters.add(status)
+    btn.className = 'filter-btn active-' + key
+  }
+  renderGrid()
+}
+
+function deleteImage(idx) {
+  const img = images[idx]
+  if (!img) return
+  // 모달이 열려있으면 닫기
+  if (currentModalIdx === idx) closeModal()
+  images.splice(idx, 1)
+  // 모달 idx 보정
+  if (currentModalIdx >= images.length) currentModalIdx = images.length - 1
   renderGrid()
 }
 
